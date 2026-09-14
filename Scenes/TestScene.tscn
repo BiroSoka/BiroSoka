@@ -1,0 +1,45 @@
+[gd_scene format=3 uid="uid://budiijer71vnp"]
+
+[ext_resource type="Script" uid="uid://d2y67j2nntd5w" path="res://Scripts/PenFlick.cs" id="1_b5ayd"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_l8pro"]
+size = Vector3(10, 0.2, 6)
+
+[sub_resource type="BoxMesh" id="BoxMesh_l8pro"]
+size = Vector3(10, 0.2, 6)
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_l8pro"]
+radius = 0.1
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_d0var"]
+radius = 0.1
+
+[node name="TestTable" type="Node3D" unique_id=1978757849]
+
+[node name="Table" type="StaticBody3D" parent="." unique_id=331673987]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Table" unique_id=2138886680]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.002468586, -0.006746173, 0)
+shape = SubResource("BoxShape3D_l8pro")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Table" unique_id=1039440470]
+mesh = SubResource("BoxMesh_l8pro")
+
+[node name="Pen" type="RigidBody3D" parent="." unique_id=1376163027]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 4, 0.2, 0)
+axis_lock_linear_y = true
+gravity_scale = 1.5
+script = ExtResource("1_b5ayd")
+CameraPath = NodePath("../Camera3D")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Pen" unique_id=1236955555]
+mesh = SubResource("CapsuleMesh_l8pro")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Pen" unique_id=1061881085]
+shape = SubResource("CapsuleShape3D_d0var")
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=957751828]
+transform = Transform3D(1, 0, 0, 0, 0.70710677, 0.70710677, 0, -0.70710677, 0.70710677, 0, 7, 7)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=2051153438]
+transform = Transform3D(1, 0, 0, 0, 0.70710677, 0.70710677, 0, -0.70710677, 0.70710677, 0, 7, 7)
