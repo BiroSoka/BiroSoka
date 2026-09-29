@@ -1,5 +1,6 @@
 import type { Navigate } from '../App';
 import { Button, PaperScreen, Segmented, Toggle } from '../components/ui';
+import { sfx } from '../lib/audio';
 import { setPrefs, usePrefs } from '../lib/prefs';
 
 export function Settings({ navigate }: { navigate: Navigate }) {
@@ -25,6 +26,10 @@ export function Settings({ navigate }: { navigate: Navigate }) {
           ]}
         />
       </section>
+      <Button variant="ghost" onClick={() => sfx.test()}>
+        🔊 Test sound
+      </Button>
+      <p className="muted small">No sound on an iPhone? Switch off silent mode (the switch on the side) and turn up the media volume.</p>
       <Button variant="ghost" onClick={() => setPrefs({ seenTutorial: false })}>
         Show flick tutorial again
       </Button>

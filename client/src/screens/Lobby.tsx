@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Navigate } from '../App';
-import { Button, PaperScreen, PenPreview } from '../components/ui';
+import { PlayerAvatar } from '../components/PlayerAvatar';
+import { Button, PaperScreen } from '../components/ui';
 import { online, useOnline } from '../lib/online';
 import { usePrefs } from '../lib/prefs';
 
@@ -56,13 +57,15 @@ export function Lobby({ navigate }: { navigate: Navigate }) {
           </Button>
         </div>
 
-        <div className="waiting-pen">
-          <PenPreview skin={prefs.skin} width={160} height={160} angle={0.8} className="spin" />
+        <div className="matchup">
+          <PlayerAvatar name={prefs.name || 'You'} skin={prefs.skin} size={76} />
+          <span className="vs marker">vs</span>
+          <span className="avatar-empty marker" aria-hidden="true">?</span>
         </div>
         <p className="hand">
           Waiting for a challenger<span className="dots" />
         </p>
-        <p className="muted small">First to {net.room?.target ?? prefs.target} · you go first</p>
+        <p className="muted small">First to {net.room?.target ?? prefs.target} · a coin toss decides who starts</p>
         {net.connection === 'reconnecting' && <p className="error-msg">Connection lost, reconnecting…</p>}
       </div>
       <div className="grow" />

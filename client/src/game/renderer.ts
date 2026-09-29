@@ -17,6 +17,8 @@ export interface AimVisual {
   grab: { x: number; y: number };
   pull: { x: number; y: number };
   power: number;
+  /** Launch-angle uncertainty (1 standard deviation, radians); 0 = the aim is exact. */
+  spread: number;
   preview: ShotPreview | null;
   /** Show the percentage label (the human's own aim). */
   label: boolean;
@@ -325,6 +327,7 @@ export class Renderer {
       carry = t - seg;
       total += seg;
     }
+    this.drawSpread(aim, pv.path[0], total);
     const danger = pv.endsOut;
     for (const d of dots) {
       if (d.d < 0.35) continue;
@@ -396,6 +399,39 @@ export class Renderer {
     }
   }
 
+  /** High-power shots wobble: show the cone the pen may really leave in (about 2 in 3 shots land inside it). */
+  private drawSpread(aim: AimVisual, origin: { x: number; y: number }, pathLen: number) {
+    if (aim.spread < 0.02) return;
+    const { ctx } = this;
+    const vx = aim.grab.x - aim.pull.x;
+    const vy = aim.grab.y - aim.pull.y;
+    const len = Math.hypot(vx, vy);
+    if (len < 1e-4) return;
+    const base = Math.atan2(vy, vx);
+    const reach = Math.max(2.2, Math.min(7, pathLen));
+    const a0 = base - aim.spread;
+    const a1 = base + aim.spread;
+    const grad = ctx.createRadialGradient(origin.x, origin.y, 0.2, origin.x, origin.y, reach);
+    grad.addColorStop(0, 'rgba(255,190,90,0.34)');
+    grad.addColorStop(1, 'rgba(255,120,60,0.06)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(origin.x, origin.y);
+    ctx.arc(origin.x, origin.y, reach, a0, a1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,170,80,0.55)';
+    ctx.lineWidth = 0.02;
+    ctx.setLineDash([0.08, 0.06]);
+    ctx.beginPath();
+    ctx.moveTo(origin.x + Math.cos(a0) * 0.3, origin.y + Math.sin(a0) * 0.3);
+    ctx.lineTo(origin.x + Math.cos(a0) * reach, origin.y + Math.sin(a0) * reach);
+    ctx.moveTo(origin.x + Math.cos(a1) * 0.3, origin.y + Math.sin(a1) * 0.3);
+    ctx.lineTo(origin.x + Math.cos(a1) * reach, origin.y + Math.sin(a1) * reach);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
   /** Rubber band from the grab point back to the finger, plus the power arc. */
   private drawPull(aim: AimVisual) {
     const { ctx } = this;
@@ -462,6 +498,13 @@ export class Renderer {
     ctx.strokeText(text, s.x, y);
     ctx.fillStyle = '#fff';
     ctx.fillText(text, s.x, y);
+    if (aim.spread > 0.02) {
+      ctx.font = '800 11px "Baloo 2", system-ui, sans-serif';
+      ctx.lineWidth = 3;
+      ctx.strokeText('shaky aim', s.x, y - 15);
+      ctx.fillStyle = '#ffc266';
+      ctx.fillText('shaky aim', s.x, y - 15);
+    }
   }
 }
 

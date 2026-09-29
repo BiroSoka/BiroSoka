@@ -56,6 +56,9 @@ export function PaperScreen({ title, onBack, children, className = '' }: { title
           </header>
         )}
         {children}
+        <p className="credit">
+          Developed by <b>ma_azi</b>
+        </p>
       </div>
     </div>
   );

@@ -18,7 +18,7 @@ const PROGRESSION: { bass: number; chord: number[] }[] = [
   { bass: 43, chord: [55, 59, 62, 67, 69] },
 ];
 const SCALE = [69, 72, 74, 76, 79, 81, 84]; // A minor pentatonic, upper register
-const MUSIC_LEVEL = 0.32;
+const MUSIC_LEVEL = 0.25;
 
 class Music {
   private out: GainNode | null = null;
@@ -94,19 +94,19 @@ class Music {
     // Slight swing on the off-beat eighths for a lazy feel.
     const time = inBar % 2 === 1 ? t + STEP * 0.18 : t;
 
-    if (inBar === 0) chord.forEach((n, i) => this.pad(ctx, midi(n), time + i * 0.012, BEAT * 7.6, 0.05));
-    if (inBar === 0 || inBar === 5) this.bassNote(ctx, midi(bass - 12), time, BEAT * 1.6);
-    if (inBar === 3 && bar % 2 === 1) this.bassNote(ctx, midi(bass - 5), time, BEAT);
+    if (inBar === 0) chord.forEach((n, i) => this.pad(ctx, midi(n), time + i * 0.012, BEAT * 7.6, 0.075));
+    if (inBar === 0 || inBar === 5) this.bassNote(ctx, midi(bass), time, BEAT * 1.6);
+    if (inBar === 3 && bar % 2 === 1) this.bassNote(ctx, midi(bass + 7), time, BEAT);
 
     if (inBar === 0 || inBar === 5) this.kick(ctx, time);
     if (inBar === 4) this.snare(ctx, noise, time);
-    if (inBar % 2 === 0 || Math.random() < 0.25) this.hat(ctx, noise, time, inBar % 4 === 2 ? 0.05 : 0.03);
+    if (inBar % 2 === 0 || Math.random() < 0.25) this.hat(ctx, noise, time, inBar % 4 === 2 ? 0.07 : 0.045);
 
     // Sparse melody: mostly stepwise moves through the scale, with plenty of rests.
     if ((inBar === 2 || inBar === 6 || inBar === 7) && Math.random() < 0.55) {
       const move = [-2, -1, -1, 0, 1, 1, 2][Math.floor(Math.random() * 7)];
       this.lastMelody = Math.max(0, Math.min(SCALE.length - 1, this.lastMelody + move));
-      this.pluck(ctx, midi(SCALE[this.lastMelody]), time, 0.06 + Math.random() * 0.03);
+      this.pluck(ctx, midi(SCALE[this.lastMelody]), time, 0.1 + Math.random() * 0.04);
     }
   }
 
@@ -138,9 +138,9 @@ class Music {
 
   private bassNote(ctx: AudioContext, freq: number, t: number, dur: number) {
     const o = ctx.createOscillator();
-    o.type = 'sine';
+    o.type = 'triangle';
     o.frequency.value = freq;
-    const g = this.env(ctx, t, 0.02, dur * 0.4, dur * 0.6, 0.32);
+    const g = this.env(ctx, t, 0.02, dur * 0.4, dur * 0.6, 0.45);
     o.connect(g).connect(this.out!);
     o.start(t);
     o.stop(t + dur + 0.1);
@@ -164,10 +164,18 @@ class Music {
     const o = ctx.createOscillator();
     o.frequency.setValueAtTime(130, t);
     o.frequency.exponentialRampToValueAtTime(42, t + 0.12);
-    const g = this.env(ctx, t, 0.003, 0.02, 0.2, 0.55);
+    const g = this.env(ctx, t, 0.003, 0.02, 0.2, 0.7);
     o.connect(g).connect(this.out!);
     o.start(t);
     o.stop(t + 0.3);
+    const knock = ctx.createOscillator();
+    knock.type = 'triangle';
+    knock.frequency.setValueAtTime(240, t);
+    knock.frequency.exponentialRampToValueAtTime(110, t + 0.06);
+    const kg = this.env(ctx, t, 0.002, 0.01, 0.07, 0.35);
+    knock.connect(kg).connect(this.out!);
+    knock.start(t);
+    knock.stop(t + 0.15);
   }
 
   private snare(ctx: AudioContext, noise: AudioBuffer, t: number) {

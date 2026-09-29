@@ -60,3 +60,21 @@ export const GUIDE = {
 
 export const TARGET_SCORES = [3, 5, 7, 10] as const;
 export const DEFAULT_TARGET = 5;
+
+/**
+ * Power costs accuracy (like a golf drive). Below `startPower` shots are exactly as aimed,
+ * so ordinary play is unchanged. Above it the launch direction wobbles by a random angle,
+ * growing to `sigma` radians (1 standard deviation) at full power. This is what keeps a
+ * dead-straight full-power "ace" possible but rare.
+ */
+export const ACCURACY = {
+  startPower: 0.75,
+  sigma: 0.32,
+  /** The wobble is never worse than this many standard deviations. */
+  maxDeviations: 1.8,
+} as const;
+
+/** How much the pens' starting angles vary around "lying across the desk" (radians). */
+export const START = {
+  angleJitter: 1.0,
+} as const;

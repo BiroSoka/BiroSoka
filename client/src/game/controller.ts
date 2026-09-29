@@ -1,11 +1,15 @@
 import {
   applyShotResult,
   getSkin,
+  isOpeningPosition,
   GUIDE,
   INPUT,
 
+  PEN,
   PHYS,
   previewShot,
+  wobbleFlick,
+  wobbleSigma,
   Sim,
   type Ack,
   type Difficulty,
@@ -30,13 +34,16 @@ import type { Insets } from './view';
  *   thinking (AI) -> ai-aiming -> moving -> ...
  *   waiting (online opponent) -> moving -> ...
  */
-export type Phase = 'ready' | 'aiming' | 'thinking' | 'ai-aiming' | 'waiting' | 'moving' | 'settling' | 'resolving' | 'over';
+export type Phase = 'intro' | 'ready' | 'aiming' | 'thinking' | 'ai-aiming' | 'waiting' | 'moving' | 'settling' | 'resolving' | 'over';
 
 export interface LastShot {
   id: number;
   shooter: Seat;
   outcome: Outcome;
   delta: number;
+  /** Whether it was the opening flick of a round (a knockout with it is an ace), and how much spin it had (0..1). */
+  opening: boolean;
+  spin: number;
 }
 
 export interface HudState {
@@ -58,6 +65,8 @@ export interface ControllerOptions {
   skins: [string, string];
   difficulty: Difficulty;
   match: MatchState;
+  /** Hold the first turn (coin toss on screen) until release() is called. */
+  startHeld?: boolean;
   prefs: ControllerPrefs;
   onHud: (hud: HudState) => void;
   /** Online only: send my flick to the server. */
@@ -112,6 +121,8 @@ export class GameController {
   private simAcc = 0;
   private shooter: Seat = 0;
   private flick: Flick | null = null;
+  private spinStrength = 0;
+  private shotWasOpening = false;
   private expectedShotNo = -1;
   private authority: ShotMessage | null = null;
   private queued: ShotMessage[] = [];
@@ -127,9 +138,11 @@ export class GameController {
   private lastTime = 0;
   private resizeObs: ResizeObserver;
   private destroyed = false;
+  private held = false;
 
   constructor(opts: ControllerOptions) {
     this.opts = opts;
+    this.held = !!opts.startHeld;
     this.match = opts.match;
     this.display = [...opts.match.pens];
     this.renderer = new Renderer(opts.canvas);
@@ -238,10 +251,22 @@ export class GameController {
     }, ms);
   }
 
+  /** Ends the intro hold (coin toss finished) and lets the first turn begin. */
+  release() {
+    if (!this.held) return;
+    this.held = false;
+    if (this.phase === 'intro') this.nextTurn();
+  }
+
   private nextTurn() {
     const m = this.match;
     if (m.winner !== null) {
       this.phase = 'over';
+      this.emit();
+      return;
+    }
+    if (this.held) {
+      this.phase = 'intro';
       this.emit();
       return;
     }
@@ -290,7 +315,7 @@ export class GameController {
       if (msg.shotNo > this.match.shotNo) this.match = msg.before; // we missed something; trust the server
       this.authority = msg;
       this.expectedShotNo = msg.shotNo;
-      this.startShot(msg.shooter, msg.flick, msg.before.pens);
+      this.startShot(msg.shooter, msg.flick, msg.before.pens, msg.before.seed, msg.shotNo);
       return;
     }
   }
@@ -305,7 +330,7 @@ export class GameController {
         if (!ack.ok && epoch === this.epoch) this.abortShot();
       });
     }
-    this.startShot(seat, flick, this.match.pens);
+    this.startShot(seat, flick, this.match.pens, this.match.seed, this.match.shotNo);
   }
 
   /** The server rejected our shot: put everything back and let the snapshot resync us. */
@@ -316,12 +341,22 @@ export class GameController {
     this.nextTurn();
   }
 
-  private startShot(shooter: Seat, flick: Flick, pens: readonly Pose[]) {
+  /**
+   * `seed` and `shotNo` identify the shot for the high-power wobble, which the server
+   * recomputes identically, so both players and the referee see the same result.
+   */
+  private startShot(shooter: Seat, flick: Flick, pens: readonly Pose[], seed: number, shotNo: number) {
     this.sim = new Sim(pens);
-    this.sim.applyFlick(shooter, flick);
+    this.sim.applyFlick(shooter, wobbleFlick(seed, shotNo, flick));
     this.simAcc = 0;
     this.shooter = shooter;
     this.flick = flick;
+    this.shotWasOpening = isOpeningPosition(pens, seed, shotNo);
+    {
+      const pose = pens[shooter];
+      const cross = Math.cos(pose.a) * flick.dy - Math.sin(pose.a) * flick.dx;
+      this.spinStrength = Math.abs((flick.gx / (PEN.length / 2)) * cross) * flick.power;
+    }
     this.drag = null;
     this.aiAim = null;
     this.display = this.sim.poses();
@@ -385,7 +420,14 @@ export class GameController {
     this.display = [...res.final];
 
     const me = this.opts.mySeat;
-    this.lastShot = { id: ++this.shotCounter, shooter: res.shooter, outcome: res.outcome, delta: res.delta };
+    this.lastShot = {
+      id: ++this.shotCounter,
+      shooter: res.shooter,
+      outcome: res.outcome,
+      delta: res.delta,
+      opening: this.shotWasOpening,
+      spin: this.spinStrength,
+    };
     const goodForMe = (res.delta > 0) === (res.shooter === me);
     if (res.outcome === 'both-off') sfx.neutral();
     else if (res.outcome !== 'none') {
@@ -396,7 +438,7 @@ export class GameController {
     this.phase = 'resolving';
     this.emit();
 
-    this.later(res.outcome === 'none' ? 300 : 1400, () => {
+    this.later(res.outcome === 'none' ? 300 : 1900, () => {
       this.match = res.after;
       if (res.reset) {
         this.display = [...this.match.pens];
@@ -443,7 +485,7 @@ export class GameController {
 
     if (this.phase === 'ai-aiming' && this.aiAim) {
       this.aiAim.t += dt;
-      if (this.aiAim.t >= this.aiAim.dur + 0.18) this.startShot(this.match.turn, this.aiAim.flick, this.match.pens);
+      if (this.aiAim.t >= this.aiAim.dur + 0.18) this.startShot(this.match.turn, this.aiAim.flick, this.match.pens, this.match.seed, this.match.shotNo);
     }
 
     for (const a of this.anims) {
@@ -485,7 +527,7 @@ export class GameController {
     if (this.phase === 'aiming' && this.drag) {
       const d = this.drag;
       const { pull, power } = pullFor(d.grab, d.pointer);
-      return { grab: d.grab, pull, power, preview: power >= INPUT.minPower ? d.preview : null, label: true };
+      return { grab: d.grab, pull, power, spread: wobbleSigma(power), preview: power >= INPUT.minPower ? d.preview : null, label: true };
     }
     if (this.phase === 'ai-aiming' && this.aiAim) {
       const a = this.aiAim;
@@ -495,6 +537,7 @@ export class GameController {
         grab: a.grab,
         pull: { x: a.grab.x - a.flick.dx * len, y: a.grab.y - a.flick.dy * len },
         power: a.flick.power * k,
+        spread: 0,
         preview: k > 0.5 ? a.preview : null,
         label: false,
       };

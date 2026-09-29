@@ -13,10 +13,14 @@ import {
   type Seat,
 } from '@biro/shared';
 import type { Navigate } from '../App';
+import { CoinToss } from '../components/CoinToss';
+import { PlayerAvatar } from '../components/PlayerAvatar';
 import { Button, Confetti, Modal, Toggle } from '../components/ui';
 import { GameController, type HudState, type LastShot, type Phase } from '../game/controller';
 import { sfx } from '../lib/audio';
 import { music } from '../lib/music';
+import { pickQuip } from '../lib/quips';
+import { useAudioState } from '../lib/useAudio';
 import { online, useOnline } from '../lib/online';
 import { displayName, getPrefs, isUnlocked, setPrefs, unlockedSkins, usePrefs } from '../lib/prefs';
 import { AI_OPPONENTS } from './AiSetup';
@@ -32,12 +36,15 @@ interface Toast {
   id: number;
   title: string;
   sub: string;
+  /** A short random comment, shown under the score line. */
+  quip?: string;
   tone: 'good' | 'bad' | 'neutral';
 }
 
 export function GameScreen({ mode, difficulty, target, navigate }: Props) {
   const prefs = usePrefs();
   const net = useOnline();
+  const audioState = useAudioState();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctrlRef = useRef<GameController | null>(null);
   const [hud, setHud] = useState<HudState | null>(null);
@@ -47,6 +54,13 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
   const [emoteOpen, setEmoteOpen] = useState(false);
   const [bubbles, setBubbles] = useState<{ id: number; seat: Seat; emote: Emote }[]>([]);
   const [unlocked, setUnlocked] = useState<string[]>([]);
+  // The opening match is fixed up front so the coin toss can show who starts. Only the very
+  // first game gets a toss; rematches alternate who starts.
+  const [startMatch] = useState<MatchState | null>(() =>
+    mode === 'ai' ? newMatch(target, randomSeed(), Math.random() < 0.5 ? 1 : 0) : (online.getState().room?.match ?? null),
+  );
+  const [tossing, setTossing] = useState(startMatch?.shotNo === 0);
+  const seedRef = useRef(startMatch?.seed);
   const recordedRef = useRef<number | null>(null);
 
   const mySeat: Seat = mode === 'online' ? (net.seat ?? 0) : 0;
@@ -75,7 +89,7 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
   // ---- controller lifecycle -----------------------------------------------
   useEffect(() => {
     const canvas = canvasRef.current!;
-    const start: MatchState | null = mode === 'ai' ? newMatch(target, randomSeed(), 0) : online.getState().room?.match ?? null;
+    const start = startMatch;
     if (!start) {
       navigate({ name: 'online' });
       return;
@@ -88,6 +102,7 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
       skins,
       difficulty,
       match: start,
+      startHeld: start.shotNo === 0,
       prefs: { guide: p.guide, haptics: p.haptics, theme: p.table },
       onHud: setHud,
       sendShot: mode === 'online' ? (flick, shotNo) => online.shot(flick, shotNo) : undefined,
@@ -134,7 +149,7 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
     const t = describeShot(s, mySeat, mode === 'online' ? oppName : oppName);
     if (!t) return;
     setToast(t);
-    const timer = window.setTimeout(() => setToast((cur) => (cur?.id === t.id ? null : cur)), 1500);
+    const timer = window.setTimeout(() => setToast((cur) => (cur?.id === t.id ? null : cur)), 2100);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastShotId]);
@@ -179,11 +194,30 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
     setUnlocked([]);
     if (mode === 'ai') {
       const prev = match!;
-      ctrlRef.current?.newMatch(newMatch(target, randomSeed(), other(prev.firstTurn)));
+      const next = newMatch(target, randomSeed(), other(prev.firstTurn));
+      ctrlRef.current?.newMatch(next);
+      announceStart(next);
     } else {
       online.rematch();
     }
   }
+
+  function announceStart(m: MatchState) {
+    const id = Date.now();
+    setToast({ id, title: 'REMATCH', sub: m.firstTurn === mySeat ? 'You start' : `${oppName} starts`, tone: 'neutral' });
+    window.setTimeout(() => setToast((cur) => (cur?.id === id ? null : cur)), 1800);
+  }
+
+  // Online: the server started a rematch.
+  const netSeed = net.room?.match?.seed;
+  useEffect(() => {
+    const m = net.room?.match;
+    if (mode !== 'online' || !m || seedRef.current === m.seed) return;
+    seedRef.current = m.seed;
+    setUnlocked([]);
+    announceStart(m);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, netSeed]);
 
   function quit() {
     if (mode === 'online') {
@@ -224,6 +258,7 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
           </button>
           <PlayerCard
             name={myName}
+            avatarName={names[mySeat]}
             skin={skins[mySeat]}
             score={match.scores[mySeat]}
             target={match.target}
@@ -237,6 +272,7 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
           </div>
           <PlayerCard
             name={oppName}
+            avatarName={names[oppSeat]}
             skin={skins[oppSeat]}
             score={match.scores[oppSeat]}
             target={match.target}
@@ -252,7 +288,22 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
         <div key={toast.id} className={`toast toast-${toast.tone}`}>
           <strong className="marker">{toast.title}</strong>
           <span>{toast.sub}</span>
+          {toast.quip && <em className="quip">{toast.quip}</em>}
         </div>
+      )}
+
+      {tossing && startMatch && (
+        <CoinToss
+          firstTurn={startMatch.firstTurn}
+          mySeat={mySeat}
+          skins={skins}
+          names={[myName, oppName]}
+          avatarNames={[names[mySeat], names[oppSeat]]}
+          onDone={() => {
+            setTossing(false);
+            ctrlRef.current?.release();
+          }}
+        />
       )}
 
       <footer className="hint">
@@ -274,6 +325,8 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
           </div>
         )}
       </footer>
+
+      {prefs.sound && audioState !== 'running' && <div className="sound-pill">🔈 Tap the screen to turn sound on</div>}
 
       {oppDisconnected && <div className="banner">{oppName} lost connection. Waiting for them to come back…</div>}
       {mode === 'online' && net.connection === 'reconnecting' && <div className="banner warn">You're offline. Reconnecting…</div>}
@@ -333,6 +386,7 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
       {over && match && !abandoned && (
         <Modal>
           {iWon && <Confetti />}
+          <PlayerAvatar name={names[match.winner!]} skin={skins[match.winner!]} size={84} className="result-avatar" />
           <h2 className={`marker result ${iWon ? 'win' : 'lose'}`}>{iWon ? 'You win!' : `${oppName} wins`}</h2>
           <p className="final-score">
             <span>{match.scores[mySeat]}</span>
@@ -372,6 +426,7 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
 
 function PlayerCard({
   name,
+  avatarName,
   skin,
   score,
   target,
@@ -381,6 +436,7 @@ function PlayerCard({
   bubble,
 }: {
   name: string;
+  avatarName: string;
   skin: string;
   score: number;
   target: number;
@@ -392,7 +448,7 @@ function PlayerCard({
   const s = getSkin(skin);
   return (
     <div className={`player-card ${side} ${active ? 'active' : ''}`} style={{ ['--pen' as string]: s.capColor }}>
-      <span className="swatch" />
+      <PlayerAvatar name={avatarName} skin={skin} size={32} />
       <div className="pc-text">
         <span className="pc-name">{name}</span>
         <span className="pips" aria-label={`${score} of ${target}`}>
@@ -417,17 +473,18 @@ function PlayerCard({
 
 function describeShot(s: LastShot, mySeat: Seat, oppName: string): Toast | null {
   const mine = s.shooter === mySeat;
+  const ctx = { ace: s.outcome === 'knockout' && s.opening, spin: s.spin >= 0.35 };
   switch (s.outcome) {
     case 'knockout':
       return mine
-        ? { id: s.id, title: 'KNOCKOUT!', sub: '+1 to you', tone: 'good' }
-        : { id: s.id, title: 'KNOCKED OFF!', sub: `+1 to ${oppName}`, tone: 'bad' };
+        ? { id: s.id, title: ctx.ace ? 'ACE!' : 'KNOCKOUT!', sub: '+1 to you', quip: pickQuip('ko-win', ctx), tone: 'good' }
+        : { id: s.id, title: ctx.ace ? 'ACED!' : 'KNOCKED OFF!', sub: `+1 to ${oppName}`, quip: pickQuip('ko-lose', ctx), tone: 'bad' };
     case 'own-goal':
       return mine
-        ? { id: s.id, title: 'OWN GOAL!', sub: 'You fell off: −1', tone: 'bad' }
-        : { id: s.id, title: 'THEY FELL OFF!', sub: `−1 to ${oppName}`, tone: 'good' };
+        ? { id: s.id, title: 'OWN GOAL!', sub: 'You fell off: −1', quip: pickQuip('own-me'), tone: 'bad' }
+        : { id: s.id, title: 'THEY FELL OFF!', sub: `−1 to ${oppName}`, quip: pickQuip('own-them'), tone: 'good' };
     case 'both-off':
-      return { id: s.id, title: 'DOUBLE DROP!', sub: 'Both off: no points', tone: 'neutral' };
+      return { id: s.id, title: 'DOUBLE DROP!', sub: 'Both off: no points', quip: pickQuip('both'), tone: 'neutral' };
     default:
       return null;
   }

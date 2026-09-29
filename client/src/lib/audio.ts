@@ -2,27 +2,134 @@
  * All sound effects are synthesised with the Web Audio API: no audio files to
  * download, license or cache, and they react to impact strength.
  */
+const IS_IOS =
+  typeof navigator !== 'undefined' &&
+  (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
+/**
+ * A short silent WAV. Looping it through an <audio> element moves iOS Safari to the "playback"
+ * audio session, which (unlike plain Web Audio) is not muted by the ring/silent switch.
+ */
+function silentWavUrl(): string {
+  const rate = 8000;
+  const samples = rate / 2;
+  const buf = new ArrayBuffer(44 + samples * 2);
+  const v = new DataView(buf);
+  const tag = (o: number, t: string) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  tag(0, 'RIFF');
+  v.setUint32(4, 36 + samples * 2, true);
+  tag(8, 'WAVE');
+  tag(12, 'fmt ');
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true);
+  v.setUint32(28, rate * 2, true);
+  v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true);
+  tag(36, 'data');
+  v.setUint32(40, samples * 2, true);
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+
 class Sfx {
   enabled = true;
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private noise: AudioBuffer | null = null;
+  private keepAlive: HTMLAudioElement | null = null;
+  private primed = false;
+  private lastState = 'none';
+  private listeners = new Set<() => void>();
 
-  /** Must be called from a user gesture (browsers block autoplay). */
+  /** 'none' until the first tap; afterwards the AudioContext state ('running', 'suspended', 'interrupted'). */
+  get state(): string {
+    return this.ctx ? (this.ctx.state as string) : 'none';
+  }
+
+  subscribe = (cb: () => void) => {
+    this.listeners.add(cb);
+    return () => {
+      this.listeners.delete(cb);
+    };
+  };
+
+  private notify() {
+    if (this.state === this.lastState) return;
+    this.lastState = this.state;
+    this.listeners.forEach((l) => l());
+  }
+
+  /** Must be called from a user gesture (browsers block autoplay). Safe to call on every tap. */
   unlock() {
     if (!this.ctx) {
       const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (!Ctor) return;
       this.ctx = new Ctor();
+      this.ctx.onstatechange = () => this.notify();
+      // Everything goes through a compressor so the mix can be loud (phone speakers are quiet) without clipping.
+      const comp = this.ctx.createDynamicsCompressor();
+      comp.threshold.value = -20;
+      comp.knee.value = 14;
+      comp.ratio.value = 5;
+      comp.attack.value = 0.004;
+      comp.release.value = 0.22;
+      comp.connect(this.ctx.destination);
       this.master = this.ctx.createGain();
-      this.master.gain.value = 0.7;
-      this.master.connect(this.ctx.destination);
+      this.master.gain.value = 1.4;
+      this.master.connect(comp);
       const len = this.ctx.sampleRate * 0.5;
       this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
       const data = this.noise.getChannelData(0);
       for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    const ctx = this.ctx;
+
+    // iOS: make audio ignore the silent switch.
+    try {
+      const nav = navigator as Navigator & { audioSession?: { type: string } };
+      if (nav.audioSession) nav.audioSession.type = 'playback';
+    } catch {
+      /* unsupported */
+    }
+    if (IS_IOS) {
+      if (!this.keepAlive) {
+        const a = new Audio(silentWavUrl());
+        a.loop = true;
+        a.setAttribute('playsinline', '');
+        this.keepAlive = a;
+      }
+      if (this.keepAlive.paused) void this.keepAlive.play().catch(() => undefined);
+    }
+
+    if ((ctx.state as string) !== 'running') void ctx.resume().then(() => this.notify()).catch(() => undefined);
+    if (!this.primed) {
+      // iOS only fully unlocks once a source has been started inside a gesture.
+      const src = ctx.createBufferSource();
+      src.buffer = ctx.createBuffer(1, 1, 22050);
+      src.connect(ctx.destination);
+      src.start(0);
+      this.primed = true;
+    }
+    this.notify();
+  }
+
+  /** Keep audio alive across taps, phone calls and locked screens. Call once at startup. */
+  installGestureUnlock() {
+    const retry = () => {
+      if (this.state !== 'running') this.unlock();
+    };
+    for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) document.addEventListener(ev, retry, { passive: true });
+    document.addEventListener('visibilitychange', () => {
+      if (!this.keepAlive) return;
+      if (document.hidden) this.keepAlive.pause();
+      else void this.keepAlive.play().catch(() => undefined);
+    });
+  }
+
+  /** Plays a short jingle so players can check their volume and silent switch. */
+  test() {
+    this.score();
   }
 
   /** Shared audio graph, for the music engine. Null until unlock() has run. */
@@ -105,6 +212,20 @@ class Sfx {
       this.tone(at, 1400 - i * 120, 0.04, gain * 0.5, 'square', 900);
       at += 0.09 - i * 0.015;
       gain *= 0.55;
+    }
+  }
+
+  /** Coin toss: a bright ring when it leaves the thumb and a ping when it lands. */
+  coin(landed: boolean) {
+    const ctx = this.ready();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    if (!landed) {
+      this.tone(t, 2600, 0.5, 0.1, 'sine', 3400);
+      this.tone(t, 5200, 0.35, 0.04, 'sine');
+    } else {
+      this.tone(t, 1800, 0.25, 0.14, 'triangle', 1500);
+      this.burst(t, 0.03, 0.2, 'bandpass', 4500, 3);
     }
   }
 

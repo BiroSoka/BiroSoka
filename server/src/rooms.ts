@@ -85,8 +85,8 @@ export class RoomStore {
     if (room.seats[1]) return { error: 'That room is already full.' };
     const token = randomBytes(16).toString('hex');
     room.seats[1] = { token, name, skin: getSkin(skin).id, socketId, dropTimer: null };
-    // Host breaks first in the first game.
-    room.match = newMatch(room.target, randomSeed(), 0);
+    // Coin toss decides who starts the first game, whoever created the room.
+    room.match = newMatch(room.target, randomSeed(), randomInt(2) as Seat);
     room.status = 'playing';
     room.lastActive = Date.now();
     return { token };

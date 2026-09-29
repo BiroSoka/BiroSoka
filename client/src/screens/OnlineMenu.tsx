@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CODE_LENGTH, TARGET_SCORES, normalizeCode } from '@biro/shared';
 import type { Navigate } from '../App';
+import { PlayerAvatar } from '../components/PlayerAvatar';
 import { Button, PaperScreen, Segmented } from '../components/ui';
 import { online, useOnline } from '../lib/online';
 import { setPrefs, usePrefs } from '../lib/prefs';
@@ -49,9 +50,12 @@ export function OnlineMenu({ navigate, initialCode }: { navigate: Navigate; init
       </button>
 
       <section className="field">
-        <label className="hand" htmlFor="name">
-          Your name
-        </label>
+        <div className="name-head">
+          <label className="hand" htmlFor="name">
+            Your name
+          </label>
+          <PlayerAvatar name={prefs.name || 'You'} skin={prefs.skin} size={40} />
+        </div>
         <input
           id="name"
           className="text-input"
