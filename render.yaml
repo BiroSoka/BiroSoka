@@ -1,0 +1,12 @@
+# Render Blueprint: one Web Service serves the React app AND the multiplayer server.
+services:
+  - type: web
+    name: biro-soka
+    runtime: node
+    plan: free            # free sleeps after ~15 min idle; use "starter" ($7/mo) to keep it awake
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22

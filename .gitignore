@@ -1,3 +1,9 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# Web app
+node_modules/
+client/dist/
+*.log
+.env

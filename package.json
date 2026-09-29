@@ -1,0 +1,23 @@
+{
+  "name": "biro-soka",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "shared",
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c yellow,cyan \"npm:dev -w server\" \"npm:dev -w client\"",
+    "build": "npm run build -w client",
+    "start": "npm start -w server",
+    "typecheck": "tsc -p shared && tsc -p client --noEmit && tsc -p server --noEmit"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

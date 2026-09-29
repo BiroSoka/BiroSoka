@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d59a57"/><stop offset="1" stop-color="#9a6130"/></linearGradient>
+    <linearGradient id="barrel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".95"/><stop offset=".45" stop-color="#dfe8f2" stop-opacity=".85"/><stop offset="1" stop-color="#8fa3ba" stop-opacity=".9"/></linearGradient>
+    <linearGradient id="cap" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5c82ff"/><stop offset=".5" stop-color="#1d47b8"/><stop offset="1" stop-color="#0f2a73"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <g stroke="#6e4220" stroke-opacity=".25" stroke-width="5" fill="none">
+    <path d="M40 120 C 180 100, 330 150, 470 110"/><path d="M40 210 C 200 190, 320 240, 470 200"/><path d="M40 400 C 160 380, 340 420, 470 390"/>
+  </g>
+  <g transform="rotate(-35 256 256)">
+    <rect x="96" y="232" width="330" height="48" rx="24" fill="#000" opacity=".28" transform="translate(14 18)"/>
+    <path d="M70 256 L110 238 L110 274 Z" fill="#b9c0c9"/>
+    <rect x="108" y="234" width="250" height="44" rx="6" fill="url(#barrel)"/>
+    <rect x="112" y="252" width="200" height="8" rx="4" fill="#1a3a9e"/>
+    <rect x="300" y="229" width="130" height="54" rx="27" fill="url(#cap)"/>
+    <rect x="320" y="240" width="96" height="10" rx="5" fill="#8aa6ff"/>
+  </g>
+</svg>
