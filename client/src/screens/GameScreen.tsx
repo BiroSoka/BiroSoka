@@ -21,6 +21,8 @@ import { sfx } from '../lib/audio';
 import { music } from '../lib/music';
 import { pickQuip } from '../lib/quips';
 import { useAudioState } from '../lib/useAudio';
+import { onlineSecondsLeft, useTurnClock } from '../lib/turnClock';
+import { TurnTimer } from '../components/TurnTimer';
 import { online, useOnline } from '../lib/online';
 import { displayName, getPrefs, isUnlocked, setPrefs, unlockedSkins, usePrefs } from '../lib/prefs';
 import { AI_OPPONENTS } from './AiSetup';
@@ -63,7 +65,7 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
   const seedRef = useRef(startMatch?.seed);
   const recordedRef = useRef<number | null>(null);
 
-  const mySeat: Seat = mode === 'online' ? (net.seat ?? 0) : 0;
+  const mySeat: Seat = mode === 'online' ? ((net.seat ?? 0) as Seat) : 0;
   const oppSeat = other(mySeat);
 
   // Pick the AI's pen once per game: a different colour from yours.
@@ -106,15 +108,23 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
       prefs: { guide: p.guide, haptics: p.haptics, theme: p.table },
       onHud: setHud,
       sendShot: mode === 'online' ? (flick, shotNo) => online.shot(flick, shotNo) : undefined,
+      onNotice: (text) => showNotice("TIME'S UP!", text),
     });
     ctrlRef.current = ctrl;
     setHud(ctrl.state);
 
     const offShot = online.onShot((m) => ctrl.receiveShot(m));
-    const offEmote = online.onEmote(({ seat, emote }) => showBubble(seat, emote));
+    const offEmote = online.onEmote(({ seat, emote }) => showBubble(seat as Seat, emote));
+    // The server's 15-second clock ran out for whoever was due to flick.
+    const offSkip = online.onSkip((m) => {
+      if (!m.match) return;
+      ctrl.applySkip(m.match);
+      showNotice("TIME'S UP!", m.seat === online.getState().seat ? 'Your turn passes' : 'Their turn passes');
+    });
     return () => {
       offShot();
       offEmote();
+      offSkip();
       ctrl.destroy();
       ctrlRef.current = null;
     };
@@ -124,6 +134,13 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
   useEffect(() => {
     ctrlRef.current?.setPrefs({ guide: prefs.guide, haptics: prefs.haptics, theme: prefs.table });
   }, [prefs.guide, prefs.haptics, prefs.table]);
+
+  // The pause menu freezes the turn clock (vs Computer; an online game cannot pause).
+  useEffect(() => {
+    ctrlRef.current?.setPaused(paused || confirmQuit);
+  }, [paused, confirmQuit]);
+
+  const secondsLeft = useTurnClock(() => (mode === 'ai' ? (ctrlRef.current?.timeLeft() ?? null) : onlineSecondsLeft()));
 
   // Music plays only while a match is on screen, and follows both the music and sound switches.
   useEffect(() => {
@@ -153,6 +170,12 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastShotId]);
+
+  function showNotice(title: string, sub: string) {
+    const id = Date.now() + Math.random();
+    setToast({ id, title, sub, tone: 'neutral' });
+    window.setTimeout(() => setToast((cur) => (cur?.id === id ? null : cur)), 1800);
+  }
 
   function showBubble(seat: Seat, emote: Emote) {
     const id = Date.now() + Math.random();
@@ -282,6 +305,10 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
             bubble={bubbles.filter((b) => b.seat === oppSeat).at(-1)?.emote}
           />
         </header>
+      )}
+
+      {secondsLeft !== null && !tossing && !paused && hud && hud.match.winner === null && (
+        <TurnTimer seconds={secondsLeft} mine={hud.match.turn === mySeat} />
       )}
 
       {toast && (

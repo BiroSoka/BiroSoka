@@ -30,8 +30,10 @@ export interface MatchState {
   turn: Seat;
   pens: [Pose, Pose];
   winner: Seat | null;
-  /** Increments every shot; used to reject stale/duplicate shots and to seed pen resets. */
+  /** Increments every shot or skipped turn; used to reject stale/duplicate shots and to seed the shot wobble. */
   shotNo: number;
+  /** The shotNo at which the pens were last put in the starting layout (0 at the start of a match). */
+  round: number;
   seed: number;
   firstTurn: Seat;
 }

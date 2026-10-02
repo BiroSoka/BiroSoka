@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CODE_LENGTH, TARGET_SCORES, normalizeCode } from '@biro/shared';
+import { CODE_LENGTH, ROYALE, TARGET_SCORES, normalizeCode, type GameMode } from '@biro/shared';
 import type { Navigate } from '../App';
 import { PlayerAvatar } from '../components/PlayerAvatar';
 import { Button, PaperScreen, Segmented } from '../components/ui';
@@ -12,6 +12,7 @@ export function OnlineMenu({ navigate, initialCode }: { navigate: Navigate; init
   const [code, setCode] = useState(initialCode ?? '');
   const [busy, setBusy] = useState<'create' | 'join' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<GameMode>('duel');
 
   useEffect(() => {
     online.connect();
@@ -24,7 +25,8 @@ export function OnlineMenu({ navigate, initialCode }: { navigate: Navigate; init
     if (needName) return setError('Pop your name in first.');
     setBusy('create');
     setError(null);
-    const r = await online.create(name, prefs.skin, prefs.target);
+    const target = mode === 'royale' && !ROYALE.targets.includes(prefs.target) ? ROYALE.defaultTarget : prefs.target;
+    const r = await online.create(name, prefs.skin, target, mode);
     setBusy(null);
     if (r.ok) navigate({ name: 'lobby' });
     else setError(r.error);
@@ -37,9 +39,12 @@ export function OnlineMenu({ navigate, initialCode }: { navigate: Navigate; init
     setError(null);
     const r = await online.joinRoom(code, name, prefs.skin);
     setBusy(null);
-    if (r.ok) navigate({ name: 'game-online' });
+    if (r.ok) navigate(r.room.mode === 'royale' ? { name: 'lobby' } : { name: 'game-online' });
     else setError(r.error);
   }
+
+  const targets: readonly number[] = mode === 'royale' ? ROYALE.targets : TARGET_SCORES;
+  const shownTarget = targets.includes(prefs.target) ? prefs.target : mode === 'royale' ? ROYALE.defaultTarget : prefs.target;
 
   const status = net.connection === 'online' ? 'Connected' : net.connection === 'idle' ? '' : 'Connecting to server…';
 
@@ -93,12 +98,25 @@ export function OnlineMenu({ navigate, initialCode }: { navigate: Navigate; init
 
       <section className="sticky-card yellow">
         <h2 className="marker">Start a game</h2>
-        <p className="muted">You'll get a code to send your friend.</p>
+        <Segmented
+          label="Game mode"
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: 'duel' as GameMode, label: '1 vs 1' },
+            { value: 'royale' as GameMode, label: '⚔️ Battle Royale' },
+          ]}
+        />
+        <p className="muted">
+          {mode === 'royale'
+            ? 'Up to 4 friends on one desk. Last pen standing scores a point. You get a code to share.'
+            : "You'll get a code to send your friend."}
+        </p>
         <Segmented
           label="Target score"
-          value={prefs.target}
+          value={shownTarget}
           onChange={(target) => setPrefs({ target })}
-          options={TARGET_SCORES.map((t) => ({ value: t as number, label: `First to ${t}` }))}
+          options={targets.map((t) => ({ value: t as number, label: `First to ${t}` }))}
         />
         <Button variant="blue" onClick={create} disabled={busy !== null} className="full">
           {busy === 'create' ? 'Creating…' : 'Create room'}

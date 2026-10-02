@@ -229,6 +229,13 @@ class Sfx {
     }
   }
 
+  /** Countdown tick for the last seconds of a turn. */
+  tick() {
+    const ctx = this.ready();
+    if (!ctx) return;
+    this.tone(ctx.currentTime, 1300, 0.06, 0.14, 'square', 950);
+  }
+
   place() {
     const ctx = this.ready();
     if (!ctx) return;

@@ -57,7 +57,7 @@ const STEPS: Step[] = [
     title: 'Flick!',
     body: (
       <>
-        The match starts by itself with a coin toss to decide who flicks first, then you take turns. Your pen is always the one nearest you, and the other player sees the same shot play out live. Send reactions with the smiley button.
+        The match starts by itself with a coin toss to decide who flicks first, then you take turns. You have 15 seconds per turn. Your pen is always the one nearest you, and the other player sees the same shot play out live. Send reactions with the smiley button.
       </>
     ),
   },
@@ -74,7 +74,7 @@ const STEPS: Step[] = [
 
 const TROUBLE: [string, string][] = [
   ['“No room called …”', 'Check the code for typos. Codes are 5 characters and never contain 0, O, 1, I or L. A code stops working once the host leaves the waiting room.'],
-  ['“That room is already full”', 'A room is for exactly two players. The host can create a fresh room.'],
+  ['“That room is already full”', 'A 1 vs 1 room is for exactly two players and a Battle Royale room takes up to four. Nobody can join once a Battle Royale has started. The host can create a fresh room.'],
   ['Stuck on “Connecting to server…”', 'The server may be waking up after being idle. Wait about a minute, then try again.'],
 ];
 
@@ -95,6 +95,20 @@ export function HowToOnline({ navigate }: { navigate: Navigate }) {
           </li>
         ))}
       </ol>
+
+      <section className="royale-rules">
+        <h2 className="hand">⚔️ Battle Royale (2 to 4 players)</h2>
+        <p>
+          Choose <b>Battle Royale</b> when you create the room. Up to four friends join with the same code, then the host taps <b>Start game</b>.
+        </p>
+        <ul>
+          <li>All pens sit on the desk and you flick <b>one after another, clockwise</b>.</li>
+          <li>A pen that falls off is <b>out for the round</b>, whether it was knocked off or you flicked it off yourself. No minus points.</li>
+          <li>The <b>last pen standing scores +1</b>. If the final pens fall together, nobody scores.</li>
+          <li>Each new round starts with the <b>next player clockwise</b>.</li>
+          <li>First to <b>5 or 10</b> wins. You have <b>15 seconds</b> per turn, or it moves on to the next player.</li>
+        </ul>
+      </section>
 
       <section className="trouble">
         <h2 className="hand">Something not working?</h2>

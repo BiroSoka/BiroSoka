@@ -8,6 +8,8 @@ import {
   PEN,
   PHYS,
   previewShot,
+  skipTurn,
+  TURN,
   wobbleFlick,
   wobbleSigma,
   Sim,
@@ -71,6 +73,8 @@ export interface ControllerOptions {
   onHud: (hud: HudState) => void;
   /** Online only: send my flick to the server. */
   sendShot?: (flick: Flick, shotNo: number) => Promise<Ack>;
+  /** Short messages for the player, e.g. when their time runs out. */
+  onNotice?: (text: string) => void;
 }
 
 interface Resolution {
@@ -139,6 +143,11 @@ export class GameController {
   private resizeObs: ResizeObserver;
   private destroyed = false;
   private held = false;
+  /** vs Computer: seconds the human has used on the current turn (online, the server keeps the clock). */
+  private turnElapsed = 0;
+  private paused = false;
+  /** A skip from the server that arrived while a shot was still playing out. */
+  private pendingSkip: MatchState | null = null;
 
   constructor(opts: ControllerOptions) {
     this.opts = opts;
@@ -238,6 +247,41 @@ export class GameController {
     return { match: this.match, phase: this.phase, lastShot: this.lastShot };
   }
 
+  /** Freeze the turn clock while the pause menu is open (vs Computer only; online games cannot pause). */
+  setPaused(paused: boolean) {
+    this.paused = paused;
+  }
+
+  /** vs Computer: seconds left on the human's turn, or null when no turn is being timed. */
+  timeLeft(): number | null {
+    if (this.opts.mode !== 'ai') return null;
+    if (this.phase !== 'ready' && this.phase !== 'aiming') return null;
+    return Math.max(0, TURN.seconds - this.turnElapsed);
+  }
+
+  /** Online: the server skipped a turn (time ran out). Adopt the new state. */
+  applySkip(next: MatchState) {
+    if (next.seed !== this.match.seed || next.shotNo <= this.match.shotNo) return;
+    if (this.phase === 'moving' || this.phase === 'settling' || this.phase === 'resolving') {
+      this.pendingSkip = next; // applied as soon as the current shot has finished
+      return;
+    }
+    this.drag = null;
+    this.aiAim = null;
+    this.match = next;
+    this.display = [...next.pens];
+    this.nextTurn();
+  }
+
+  /** vs Computer: the human ran out of time, so the turn passes to the Computer. */
+  private forfeitTurn() {
+    this.drag = null;
+    this.match = skipTurn(this.match);
+    this.opts.onNotice?.("Time's up! Your turn passes");
+    sfx.neutral();
+    this.nextTurn();
+  }
+
   // ---- turn flow ----------------------------------------------------------
 
   private emit() {
@@ -259,6 +303,12 @@ export class GameController {
   }
 
   private nextTurn() {
+    this.turnElapsed = 0;
+    if (this.pendingSkip && this.pendingSkip.shotNo > this.match.shotNo) {
+      this.match = this.pendingSkip;
+      this.display = [...this.match.pens];
+    }
+    this.pendingSkip = null;
     const m = this.match;
     if (m.winner !== null) {
       this.phase = 'over';
@@ -315,7 +365,7 @@ export class GameController {
       if (msg.shotNo > this.match.shotNo) this.match = msg.before; // we missed something; trust the server
       this.authority = msg;
       this.expectedShotNo = msg.shotNo;
-      this.startShot(msg.shooter, msg.flick, msg.before.pens, msg.before.seed, msg.shotNo);
+      this.startShot(msg.shooter, msg.flick, msg.before.pens, msg.before.seed, msg.shotNo, msg.before.round);
       return;
     }
   }
@@ -330,7 +380,7 @@ export class GameController {
         if (!ack.ok && epoch === this.epoch) this.abortShot();
       });
     }
-    this.startShot(seat, flick, this.match.pens, this.match.seed, this.match.shotNo);
+    this.startShot(seat, flick, this.match.pens, this.match.seed, this.match.shotNo, this.match.round);
   }
 
   /** The server rejected our shot: put everything back and let the snapshot resync us. */
@@ -345,13 +395,13 @@ export class GameController {
    * `seed` and `shotNo` identify the shot for the high-power wobble, which the server
    * recomputes identically, so both players and the referee see the same result.
    */
-  private startShot(shooter: Seat, flick: Flick, pens: readonly Pose[], seed: number, shotNo: number) {
+  private startShot(shooter: Seat, flick: Flick, pens: readonly Pose[], seed: number, shotNo: number, round: number) {
     this.sim = new Sim(pens);
     this.sim.applyFlick(shooter, wobbleFlick(seed, shotNo, flick));
     this.simAcc = 0;
     this.shooter = shooter;
     this.flick = flick;
-    this.shotWasOpening = isOpeningPosition(pens, seed, shotNo);
+    this.shotWasOpening = isOpeningPosition(pens, seed, round);
     {
       const pose = pens[shooter];
       const cross = Math.cos(pose.a) * flick.dy - Math.sin(pose.a) * flick.dx;
@@ -483,9 +533,14 @@ export class GameController {
       if (this.sim.settled()) this.onSettled();
     }
 
+    if (this.opts.mode === 'ai' && !this.paused && (this.phase === 'ready' || this.phase === 'aiming')) {
+      this.turnElapsed += dt;
+      if (this.turnElapsed >= TURN.seconds) this.forfeitTurn();
+    }
+
     if (this.phase === 'ai-aiming' && this.aiAim) {
       this.aiAim.t += dt;
-      if (this.aiAim.t >= this.aiAim.dur + 0.18) this.startShot(this.match.turn, this.aiAim.flick, this.match.pens, this.match.seed, this.match.shotNo);
+      if (this.aiAim.t >= this.aiAim.dur + 0.18) this.startShot(this.match.turn, this.aiAim.flick, this.match.pens, this.match.seed, this.match.shotNo, this.match.round);
     }
 
     for (const a of this.anims) {
@@ -645,7 +700,7 @@ function fromMessage(msg: ShotMessage): Resolution {
   };
 }
 
-function pullFor(grab: { x: number; y: number }, pointer: { x: number; y: number }) {
+export function pullFor(grab: { x: number; y: number }, pointer: { x: number; y: number }) {
   const vx = pointer.x - grab.x;
   const vy = pointer.y - grab.y;
   const len = Math.hypot(vx, vy);
@@ -663,6 +718,6 @@ export function layoutInsets(w: number, h: number): Insets {
   return { top: 86 + sat, bottom: 58 + sab, left: 6, right: 6 };
 }
 
-const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
-const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+export const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
+export const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
 

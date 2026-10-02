@@ -78,3 +78,18 @@ export const ACCURACY = {
 export const START = {
   angleJitter: 1.0,
 } as const;
+
+/** Time limit to take a turn, in every mode. Run out and the turn passes. */
+export const TURN = {
+  seconds: 15,
+  /** The server waits this much longer than the on-screen clock before skipping, so a flick released at 0:00 still counts. */
+  graceMs: 1200,
+} as const;
+
+/** Battle Royale: 2 to 4 players, last pen standing scores. */
+export const ROYALE = {
+  maxPlayers: 4,
+  minPlayers: 2,
+  targets: [5, 10] as readonly number[],
+  defaultTarget: 5,
+} as const;

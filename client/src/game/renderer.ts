@@ -11,6 +11,8 @@ export interface PenSprite {
   alpha: number;
   /** Pulsing ring showing whose turn it is. */
   glow: 'mine' | 'theirs' | null;
+  /** A short name tag drawn above the pen (Battle Royale, where several pens share the desk). */
+  label?: string;
 }
 
 export interface AimVisual {
@@ -163,7 +165,46 @@ export class Renderer {
 
     for (const f of this.fallers) if (f.t <= 0.1) this.drawFaller(f);
 
+    this.drawNameTags(pens);
     if (aim && aim.label) this.drawPowerLabel(aim);
+  }
+
+  /** Upright name tags above labelled pens, drawn in screen space so they never rotate with the desk. */
+  private drawNameTags(pens: PenSprite[]) {
+    const { ctx, view } = this;
+    if (!pens.some((p) => p.label)) return;
+    view.applyScreen(ctx);
+    ctx.font = '800 11px "Baloo 2", system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    for (const p of pens) {
+      if (!p.label || p.alpha < 0.4) continue;
+      const s = view.toScreen(p.pose.x, p.pose.y);
+      const w = ctx.measureText(p.label).width + 26;
+      const h = 18;
+      const x = s.x - w / 2;
+      const y = s.y - view.scale * 0.5 - h - p.lift * 14;
+      ctx.globalAlpha = p.alpha;
+      ctx.fillStyle = p.glow ? 'rgba(255,214,70,0.95)' : 'rgba(15,13,22,0.78)';
+      ctx.beginPath();
+      ctx.moveTo(x + h / 2, y);
+      ctx.arcTo(x + w, y, x + w, y + h, h / 2);
+      ctx.arcTo(x + w, y + h, x, y + h, h / 2);
+      ctx.arcTo(x, y + h, x, y, h / 2);
+      ctx.arcTo(x, y, x + w, y, h / 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = p.skin.barrel === 'clear' ? p.skin.capColor : p.skin.barrelColor;
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(x + 9, y + h / 2, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = p.glow ? '#2a2108' : '#fff';
+      ctx.fillText(p.label, x + 17, y + h / 2 + 0.5);
+      ctx.globalAlpha = 1;
+    }
   }
 
   private updateFx(dt: number) {

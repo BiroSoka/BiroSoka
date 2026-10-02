@@ -5,11 +5,13 @@ import type {
   ClientToServerEvents,
   Emote,
   Flick,
+  GameMode,
   JoinResult,
   RoomSnapshot,
-  Seat,
+  RoyaleShotMessage,
   ServerToClientEvents,
   ShotMessage,
+  SkipMessage,
 } from '@biro/shared';
 
 type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -19,14 +21,16 @@ export type Connection = 'idle' | 'connecting' | 'online' | 'reconnecting';
 export interface OnlineState {
   connection: Connection;
   room: RoomSnapshot | null;
-  seat: Seat | null;
+  /** performance.now() when `room` was last received; the turn clock counts down from here. */
+  roomAt: number;
+  seat: number | null;
   error: string | null;
 }
 
 interface Session {
   code: string;
   token: string;
-  seat: Seat;
+  seat: number;
 }
 
 const SESSION_KEY = 'biro-soka:session';
@@ -42,10 +46,12 @@ const ACK_TIMEOUT = 8000;
 class OnlineClient {
   private socket: GameSocket | null = null;
   private session: Session | null = readSession();
-  private state: OnlineState = { connection: 'idle', room: null, seat: null, error: null };
+  private state: OnlineState = { connection: 'idle', room: null, roomAt: 0, seat: null, error: null };
   private listeners = new Set<() => void>();
   private shotHandlers = new Set<(m: ShotMessage) => void>();
-  private emoteHandlers = new Set<(p: { seat: Seat; emote: Emote }) => void>();
+  private emoteHandlers = new Set<(p: { seat: number; emote: Emote }) => void>();
+  private royaleShotHandlers = new Set<(m: RoyaleShotMessage) => void>();
+  private skipHandlers = new Set<(m: SkipMessage) => void>();
 
   getState = () => this.state;
 
@@ -57,7 +63,7 @@ class OnlineClient {
   };
 
   private set(patch: Partial<OnlineState>) {
-    this.state = { ...this.state, ...patch };
+    this.state = { ...this.state, ...patch, ...('room' in patch ? { roomAt: performance.now() } : {}) };
     this.listeners.forEach((l) => l());
   }
 
@@ -66,9 +72,20 @@ class OnlineClient {
     return () => this.shotHandlers.delete(cb);
   }
 
-  onEmote(cb: (p: { seat: Seat; emote: Emote }) => void) {
+  onEmote(cb: (p: { seat: number; emote: Emote }) => void) {
     this.emoteHandlers.add(cb);
     return () => this.emoteHandlers.delete(cb);
+  }
+
+  onRoyaleShot(cb: (m: RoyaleShotMessage) => void) {
+    this.royaleShotHandlers.add(cb);
+    return () => this.royaleShotHandlers.delete(cb);
+  }
+
+  /** A turn was skipped (time ran out) or a Battle Royale player left. */
+  onSkip(cb: (m: SkipMessage) => void) {
+    this.skipHandlers.add(cb);
+    return () => this.skipHandlers.delete(cb);
   }
 
   get hasSession() {
@@ -99,6 +116,8 @@ class OnlineClient {
     s.on('connect_error', () => this.set({ connection: this.state.room ? 'reconnecting' : 'connecting' }));
     s.on('room:update', (room) => this.set({ room }));
     s.on('shot', (m) => this.shotHandlers.forEach((h) => h(m)));
+    s.on('royale:shot', (m) => this.royaleShotHandlers.forEach((h) => h(m)));
+    s.on('turn:skip', (m) => this.skipHandlers.forEach((h) => h(m)));
     s.on('emote', (p) => this.emoteHandlers.forEach((h) => h(p)));
     s.connect();
     return s;
@@ -127,8 +146,8 @@ class OnlineClient {
     });
   }
 
-  create(name: string, skin: string, target: number) {
-    return this.join('room:create', { name, skin, target } as never);
+  create(name: string, skin: string, target: number, mode: GameMode = 'duel') {
+    return this.join('room:create', { name, skin, target, mode } as never);
   }
 
   joinRoom(code: string, name: string, skin: string) {
@@ -179,6 +198,14 @@ class OnlineClient {
 
   rematch() {
     this.socket?.emit('rematch');
+  }
+
+  /** Battle Royale host: start (or restart) the match. */
+  startRoyale(): Promise<Ack> {
+    const s = this.ensureSocket();
+    return new Promise((resolve) => {
+      s.timeout(ACK_TIMEOUT).emit('royale:start', (err, r) => resolve(err ? { ok: false, error: 'Timed out' } : r));
+    });
   }
 
   emote(e: Emote) {

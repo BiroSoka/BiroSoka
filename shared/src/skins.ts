@@ -52,3 +52,18 @@ export const TABLE_THEMES: { id: TableThemeId; name: string }[] = [
   { id: 'walnut', name: 'Head Teacher' },
   { id: 'formica', name: 'Lab Bench' },
 ];
+
+/**
+ * Give every player a different pen. If two players picked the same skin, the later seat gets the
+ * first free skin instead (free skins first). Deterministic, so every device agrees.
+ */
+export function distinctSkinList(ids: string[]): string[] {
+  const used = new Set<string>();
+  const spare = [...SKINS.filter((s) => s.unlock.type === 'free'), ...SKINS.filter((s) => s.unlock.type !== 'free')].map((s) => s.id);
+  return ids.map((id) => {
+    let pick = used.has(id) ? (spare.find((s) => !used.has(s)) ?? id) : id;
+    if (!SKINS.some((s) => s.id === pick)) pick = spare.find((s) => !used.has(s)) ?? SKINS[0].id;
+    used.add(pick);
+    return pick;
+  });
+}

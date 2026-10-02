@@ -8,6 +8,7 @@ import { AiSetup } from './screens/AiSetup';
 import { OnlineMenu } from './screens/OnlineMenu';
 import { Lobby } from './screens/Lobby';
 import { GameScreen } from './screens/GameScreen';
+import { RoyaleScreen } from './screens/RoyaleScreen';
 import { PensScreen } from './screens/PensScreen';
 import { HowTo } from './screens/HowTo';
 import { HowToOnline } from './screens/HowToOnline';
@@ -20,6 +21,7 @@ export type Route =
   | { name: 'lobby' }
   | { name: 'game-ai'; difficulty: Difficulty; target: number }
   | { name: 'game-online' }
+  | { name: 'game-royale' }
   | { name: 'pens' }
   | { name: 'howto' }
   | { name: 'howto-online' }
@@ -37,6 +39,11 @@ function initialRoute(): Route {
   return { name: 'home' };
 }
 
+/** The table screen for a running online game. */
+function gameRoute(mode: 'duel' | 'royale'): Route {
+  return mode === 'royale' ? { name: 'game-royale' } : { name: 'game-online' };
+}
+
 export default function App() {
   const [route, setRoute] = useState<Route>(initialRoute);
   const prefs = usePrefs();
@@ -52,14 +59,14 @@ export default function App() {
     void online.resume().then((ok) => {
       const room = online.getState().room;
       if (!ok || !room) return;
-      setRoute(room.status === 'waiting' ? { name: 'lobby' } : { name: 'game-online' });
+      setRoute(room.status === 'waiting' ? { name: 'lobby' } : gameRoute(room.mode));
     });
   }, []);
 
   // Host is in the lobby and a friend joined: go to the table.
   useEffect(() => {
-    if (route.name === 'lobby' && net.room?.status === 'playing') setRoute({ name: 'game-online' });
-  }, [route.name, net.room?.status]);
+    if (route.name === 'lobby' && net.room?.status === 'playing') setRoute(gameRoute(net.room.mode));
+  }, [route.name, net.room?.status, net.room?.mode]);
 
   switch (route.name) {
     case 'home':
@@ -74,6 +81,8 @@ export default function App() {
       return <GameScreen key={`ai-${route.difficulty}-${route.target}`} mode="ai" difficulty={route.difficulty} target={route.target} navigate={setRoute} />;
     case 'game-online':
       return <GameScreen key="online" mode="online" difficulty="medium" target={net.room?.target ?? 5} navigate={setRoute} />;
+    case 'game-royale':
+      return <RoyaleScreen key="royale" navigate={setRoute} />;
     case 'pens':
       return <PensScreen navigate={setRoute} />;
     case 'howto-online':

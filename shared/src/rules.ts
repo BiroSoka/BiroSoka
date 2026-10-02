@@ -23,8 +23,8 @@ export function startPoses(seed: number, round: number): [Pose, Pose] {
  * True while the pens are still in the starting layout, i.e. the next flick is the opening
  * flick of a round. Knocking the opponent off with it is called an "ace".
  */
-export function isOpeningPosition(pens: readonly Pose[], seed: number, shotNo: number): boolean {
-  const start = startPoses(seed, shotNo);
+export function isOpeningPosition(pens: readonly Pose[], seed: number, round: number): boolean {
+  const start = startPoses(seed, round);
   return pens.every((p, i) => Math.abs(p.x - start[i].x) < 1e-6 && Math.abs(p.y - start[i].y) < 1e-6 && Math.abs(p.a - start[i].a) < 1e-6);
 }
 
@@ -36,9 +36,15 @@ export function newMatch(target: number, seed: number, firstTurn: Seat = 0): Mat
     pens: startPoses(seed, 0),
     winner: null,
     shotNo: 0,
+    round: 0,
     seed,
     firstTurn,
   };
+}
+
+/** The player ran out of time: their turn passes to the opponent and nothing else changes. */
+export function skipTurn(match: MatchState): MatchState {
+  return { ...match, turn: other(match.turn), shotNo: match.shotNo + 1 };
 }
 
 /**
@@ -72,7 +78,7 @@ export function applyShotResult(
     ? startPoses(before.seed, shotNo)
     : [result.final[0] as Pose, result.final[1] as Pose];
 
-  const after: MatchState = { ...before, scores, winner, pens, shotNo, turn: other(shooter) };
+  const after: MatchState = { ...before, scores, winner, pens, shotNo, round: reset ? shotNo : before.round, turn: other(shooter) };
   return { shooter, flick, result, outcome, delta, reset, before, after };
 }
 

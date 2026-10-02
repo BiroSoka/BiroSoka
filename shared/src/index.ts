@@ -6,3 +6,4 @@ export * from './rules';
 export * from './ai';
 export * from './skins';
 export * from './protocol';
+export * from './royale';
