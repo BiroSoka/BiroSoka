@@ -54,7 +54,7 @@
 ### 4.2 Physics & Scoring Rules
 - Standard 2D rigid-body physics: mass, friction, restitution (bounciness) tuned per pen/skin.
 - **Score +1:** Your flick causes your pen to hit an opponent's pen, and the opponent's pen goes off the table (yours stays on).
-- **Score -1:** Your flicked pen goes off the table without knocking an opponent off (self-inflicted "own goal").
+- **Own goal:** Your flicked pen goes off the table without knocking an opponent off (self-inflicted "own goal"): your opponent gets +1 and you are simply knocked out (no negative scores, which keeps games short).
 - **Score 0 (no change):** A collision sends both pens off the table simultaneously — cancels out.
 - **Win condition:** First to a target score (configurable: first to 5 / 7 / 10) wins the match.
 - Turn order alternates between players after each flick.

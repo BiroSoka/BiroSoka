@@ -6,6 +6,7 @@ import {
   INPUT,
 
   PEN,
+  PACE,
   PHYS,
   previewShot,
   skipTurn,
@@ -148,6 +149,8 @@ export class GameController {
   private paused = false;
   /** A skip from the server that arrived while a shot was still playing out. */
   private pendingSkip: MatchState | null = null;
+  /** vs Computer: the Computer's next shot, already being planned while the last result is on screen. */
+  private aiPlan: { shotNo: number; seed: number; started: number; promise: Promise<Flick> } | null = null;
 
   constructor(opts: ControllerOptions) {
     this.opts = opts;
@@ -207,6 +210,7 @@ export class GameController {
     this.sim = null;
     this.drag = null;
     this.aiAim = null;
+    this.aiPlan = null;
     this.queued = [];
     this.authority = null;
     this.match = match;
@@ -336,9 +340,12 @@ export class GameController {
   private thinkAi() {
     const epoch = this.epoch;
     const seat = this.match.turn;
-    const started = performance.now();
-    const minThink = 650 + Math.random() * 700;
-    void requestAiShot(this.match, seat, this.opts.difficulty).then((flick) => {
+    // A reply planned during the result pause has already been "thinking" since then.
+    const pre = this.aiPlan && this.aiPlan.shotNo === this.match.shotNo && this.aiPlan.seed === this.match.seed ? this.aiPlan : null;
+    this.aiPlan = null;
+    const started = pre?.started ?? performance.now();
+    const minThink = 400 + Math.random() * 400;
+    void (pre?.promise ?? requestAiShot(this.match, seat, this.opts.difficulty)).then((flick) => {
       if (epoch !== this.epoch || this.destroyed) return;
       const wait = Math.max(0, minThink - (performance.now() - started));
       this.later(wait, () => {
@@ -349,12 +356,23 @@ export class GameController {
           grab,
           preview: previewShot(this.match.pens, seat, flick, GUIDE.short),
           t: 0,
-          dur: 0.55 + flick.power * 0.4,
+          dur: 0.4 + flick.power * 0.3,
         };
         this.phase = 'ai-aiming';
         this.emit();
       });
     });
+  }
+
+  /** vs Computer: start planning the Computer's reply while the last shot's result is still on screen. */
+  private prefetchAi(next: MatchState) {
+    if (next.winner !== null || next.turn === this.opts.mySeat) return;
+    this.aiPlan = {
+      shotNo: next.shotNo,
+      seed: next.seed,
+      started: performance.now(),
+      promise: requestAiShot(next, next.turn, this.opts.difficulty),
+    };
   }
 
   private tryStartQueued() {
@@ -478,17 +496,19 @@ export class GameController {
       opening: this.shotWasOpening,
       spin: this.spinStrength,
     };
-    const goodForMe = (res.delta > 0) === (res.shooter === me);
+    // A knockout is good for whoever flicked; an own goal gives the point to the other player.
+    const goodForMe = res.outcome === 'knockout' ? res.shooter === me : res.shooter !== me;
     if (res.outcome === 'both-off') sfx.neutral();
     else if (res.outcome !== 'none') {
       if (goodForMe) sfx.score();
       else sfx.ownGoal();
     }
 
+    if (this.opts.mode === 'ai') this.prefetchAi(res.after);
     this.phase = 'resolving';
     this.emit();
 
-    this.later(res.outcome === 'none' ? 300 : 1900, () => {
+    this.later(res.outcome === 'none' ? PACE.quietMs : PACE.eventMs, () => {
       this.match = res.after;
       if (res.reset) {
         this.display = [...this.match.pens];
@@ -540,7 +560,7 @@ export class GameController {
 
     if (this.phase === 'ai-aiming' && this.aiAim) {
       this.aiAim.t += dt;
-      if (this.aiAim.t >= this.aiAim.dur + 0.18) this.startShot(this.match.turn, this.aiAim.flick, this.match.pens, this.match.seed, this.match.shotNo, this.match.round);
+      if (this.aiAim.t >= this.aiAim.dur + 0.12) this.startShot(this.match.turn, this.aiAim.flick, this.match.pens, this.match.seed, this.match.shotNo, this.match.round);
     }
 
     for (const a of this.anims) {

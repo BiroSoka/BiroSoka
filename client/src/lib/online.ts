@@ -51,6 +51,7 @@ class OnlineClient {
   private shotHandlers = new Set<(m: ShotMessage) => void>();
   private emoteHandlers = new Set<(p: { seat: number; emote: Emote }) => void>();
   private royaleShotHandlers = new Set<(m: RoyaleShotMessage) => void>();
+  private chatHandlers = new Set<(p: { seat: number; text: string }) => void>();
   private skipHandlers = new Set<(m: SkipMessage) => void>();
 
   getState = () => this.state;
@@ -88,6 +89,12 @@ class OnlineClient {
     return () => this.skipHandlers.delete(cb);
   }
 
+  /** A text message from another player in the room. Relayed live and never stored. */
+  onChat(cb: (p: { seat: number; text: string }) => void) {
+    this.chatHandlers.add(cb);
+    return () => this.chatHandlers.delete(cb);
+  }
+
   get hasSession() {
     return this.session !== null;
   }
@@ -119,6 +126,7 @@ class OnlineClient {
     s.on('royale:shot', (m) => this.royaleShotHandlers.forEach((h) => h(m)));
     s.on('turn:skip', (m) => this.skipHandlers.forEach((h) => h(m)));
     s.on('emote', (p) => this.emoteHandlers.forEach((h) => h(p)));
+    s.on('chat', (p) => this.chatHandlers.forEach((h) => h(p)));
     s.connect();
     return s;
   }
@@ -210,6 +218,13 @@ class OnlineClient {
 
   emote(e: Emote) {
     this.socket?.emit('emote', e);
+  }
+
+  chat(text: string): Promise<Ack> {
+    const s = this.ensureSocket();
+    return new Promise((resolve) => {
+      s.timeout(ACK_TIMEOUT).emit('chat', text, (err, r) => resolve(err ? { ok: false, error: 'Message not sent' } : r));
+    });
   }
 
   leave() {

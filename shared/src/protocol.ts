@@ -94,6 +94,8 @@ export interface ClientToServerEvents {
   shot: (p: { shotNo: number; flick: Flick }, ack: (r: Ack) => void) => void;
   rematch: () => void;
   emote: (e: Emote) => void;
+  /** A short text message to the other players. Relayed live, never stored. */
+  chat: (text: string, ack: (r: Ack) => void) => void;
 }
 
 export interface ServerToClientEvents {
@@ -102,6 +104,7 @@ export interface ServerToClientEvents {
   'royale:shot': (msg: RoyaleShotMessage) => void;
   'turn:skip': (msg: SkipMessage) => void;
   emote: (p: { seat: number; emote: Emote }) => void;
+  chat: (p: { seat: number; text: string }) => void;
 }
 
 export const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -114,4 +117,21 @@ export function normalizeCode(raw: string): string {
 export function cleanName(raw: unknown): string {
   const s = typeof raw === 'string' ? raw.replace(/\s+/g, ' ').trim().slice(0, 16) : '';
   return s || 'Player';
+}
+
+/** Longest chat message, in characters. */
+export const CHAT_MAX = 40;
+
+/**
+ * Tidy a chat message: no control or invisible characters, single spaces, at most CHAT_MAX characters.
+ * Used on both the client (before sending) and the server (before relaying), so they always agree.
+ */
+export function cleanChat(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  const plain = raw
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return Array.from(plain).slice(0, CHAT_MAX).join('').trim();
 }

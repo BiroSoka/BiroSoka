@@ -1,9 +1,11 @@
 // AI vs AI benchmark: npx tsx scripts/duel.ts <difficultyA> <difficultyB> [games]
 // Seat roles alternate every game so first-move advantage cancels out.
-import { LEGACY_HARD, newMatch, planAiShot, resolveShot, type Difficulty } from '../src';
-type Name = Difficulty | 'legacy';
+import { DIFFICULTY, LEGACY_HARD, newMatch, planAiShot, resolveShot, type Difficulty } from '../src';
+type Name = Difficulty | 'legacy' | 'prev';
+/** Desk Champ as it was before it was made faster (more samples and a bigger reply search). */
+const PREV_HARD = { ...DIFFICULTY.hard, samples: 320, refineTop: 8, refineTweaks: 12, lookaheadTop: 8, lookaheadSamples: 28, budgetMs: 3000 };
 const plan = (m: Parameters<typeof planAiShot>[0], seat: 0 | 1, d: Name, seed: number) =>
-  d === 'legacy' ? planAiShot(m, seat, 'hard', seed, LEGACY_HARD) : planAiShot(m, seat, d, seed);
+  d === 'legacy' ? planAiShot(m, seat, 'hard', seed, LEGACY_HARD) : d === 'prev' ? planAiShot(m, seat, 'hard', seed, PREV_HARD) : planAiShot(m, seat, d, seed);
 
 const [a, b, n] = [process.argv[2] as Name, process.argv[3] as Name, Number(process.argv[4] ?? 8)];
 const wins = { a: 0, b: 0, none: 0 };

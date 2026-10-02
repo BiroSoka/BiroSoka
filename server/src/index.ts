@@ -6,8 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { Server, type Socket } from 'socket.io';
 import {
   EMOTES,
+  PACE,
   PHYS,
   TURN,
+  cleanChat,
   cleanName,
   normalizeCode,
   sanitizeFlick,
@@ -29,6 +31,8 @@ const TURN_MS = Number(process.env.TURN_SECONDS ?? TURN.seconds) * 1000;
 interface SocketData {
   code?: string;
   seat?: number;
+  /** When this player last sent reactions or messages (for rate limiting). */
+  chatTimes?: number[];
 }
 
 type GameSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
@@ -93,7 +97,7 @@ function armTurnTimer(room: Room, leadMs = 0) {
 
 /** Time the clients spend animating a shot and showing its result before the next turn begins. */
 function shotLeadMs(steps: number, hadEvent: boolean, extraMs = 0) {
-  return steps * PHYS.dt * 1000 + (hadEvent ? 1900 : 300) + extraMs + 700;
+  return steps * PHYS.dt * 1000 + (hadEvent ? PACE.eventMs : PACE.quietMs) + extraMs + 700;
 }
 
 function onTurnTimeout(room: Room) {
@@ -152,6 +156,18 @@ function vacate(room: Room, seat: number) {
   else if (wasTurn) armTurnTimer(room, 800);
   broadcast(room);
   if (everyoneGone()) rooms.delete(room.code);
+}
+
+/** Reactions and messages share one allowance per player: 6 per 10 seconds. */
+const CHAT_WINDOW_MS = 10_000;
+const CHAT_MAX_IN_WINDOW = 6;
+function chatAllowed(socket: GameSocket): boolean {
+  const now = Date.now();
+  const recent = (socket.data.chatTimes ?? []).filter((t) => now - t < CHAT_WINDOW_MS);
+  socket.data.chatTimes = recent;
+  if (recent.length >= CHAT_MAX_IN_WINDOW) return false;
+  recent.push(now);
+  return true;
 }
 
 io.on('connection', (socket: GameSocket) => {
@@ -253,8 +269,20 @@ io.on('connection', (socket: GameSocket) => {
 
   socket.on('emote', (emote) => {
     const ctx = currentRoom(socket);
-    if (!ctx || !EMOTES.includes(emote)) return;
+    if (!ctx || !EMOTES.includes(emote) || !chatAllowed(socket)) return;
     socket.to(ctx.room.code).emit('emote', { seat: ctx.seat, emote });
+  });
+
+  // Messages are passed straight on to the other players in the room. They are not saved or logged anywhere.
+  socket.on('chat', (raw, ack) => {
+    const reply = typeof ack === 'function' ? ack : () => {};
+    const ctx = currentRoom(socket);
+    if (!ctx) return reply({ ok: false, error: 'Not in a room.' });
+    const text = cleanChat(raw);
+    if (!text) return reply({ ok: false, error: 'Type a message first.' });
+    if (!chatAllowed(socket)) return reply({ ok: false, error: 'Slow down a little…' });
+    socket.to(ctx.room.code).emit('chat', { seat: ctx.seat, text });
+    reply({ ok: true });
   });
 
   socket.on('room:leave', () => {

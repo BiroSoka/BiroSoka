@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { EMOTES, SKINS, distinctSkinList, getSkin, type Emote, type RoyaleState } from '@biro/shared';
+import { SKINS, cleanChat, distinctSkinList, getSkin, type Emote, type RoyaleState } from '@biro/shared';
 import type { Navigate } from '../App';
+import { ChatFeed, ReactionDock, type ChatLine } from '../components/ChatDock';
 import { PlayerAvatar } from '../components/PlayerAvatar';
 import { TurnTimer } from '../components/TurnTimer';
 import { Button, Confetti, Modal, Toggle } from '../components/ui';
@@ -33,7 +34,7 @@ export function RoyaleScreen({ navigate }: { navigate: Navigate }) {
   const [toast, setToast] = useState<Toast | null>(null);
   const [paused, setPaused] = useState(false);
   const [confirmQuit, setConfirmQuit] = useState(false);
-  const [emoteOpen, setEmoteOpen] = useState(false);
+  const [chats, setChats] = useState<ChatLine[]>([]);
   const [bubbles, setBubbles] = useState<{ id: number; seat: number; emote: Emote }[]>([]);
   const [unlocked, setUnlocked] = useState<string[]>([]);
   const [startState] = useState<RoyaleState | null>(() => online.getState().room?.royale ?? null);
@@ -80,6 +81,7 @@ export function RoyaleScreen({ navigate }: { navigate: Navigate }) {
 
     const offShot = online.onRoyaleShot((m) => ctrl.receiveShot(m));
     const offEmote = online.onEmote(({ seat, emote }) => showBubble(seat, emote));
+    const offChat = online.onChat(({ seat, text }) => showChat(seat, text));
     // The server's clock ran out for someone, or a player left.
     const offSkip = online.onSkip((m) => {
       if (!m.royale) return;
@@ -91,6 +93,7 @@ export function RoyaleScreen({ navigate }: { navigate: Navigate }) {
     return () => {
       offShot();
       offEmote();
+      offChat();
       offSkip();
       ctrl.destroy();
       ctrlRef.current = null;
@@ -136,7 +139,22 @@ export function RoyaleScreen({ navigate }: { navigate: Navigate }) {
   function sendEmote(e: Emote) {
     online.emote(e);
     showBubble(mySeat, e);
-    setEmoteOpen(false);
+  }
+
+  function showChat(seat: number, text: string) {
+    const id = Date.now() + Math.random();
+    setChats((c) => [...c.slice(-4), { id, seat, text }]);
+    window.setTimeout(() => setChats((c) => c.filter((x) => x.id !== id)), 6500);
+  }
+
+  /** Returns a problem to show the player, or null when the message went out. */
+  async function sendChat(raw: string): Promise<string | null> {
+    const text = cleanChat(raw);
+    if (!text) return null;
+    const r = await online.chat(text);
+    if (!r.ok) return r.error;
+    showChat(mySeat, text);
+    return null;
   }
 
   const eventId = hud?.event?.id;
@@ -251,22 +269,11 @@ export function RoyaleScreen({ navigate }: { navigate: Navigate }) {
         <RoyaleIntro state={state} names={names} skins={skins} mySeat={mySeat} onDone={() => ctrlRef.current?.release()} />
       )}
 
+      <ChatFeed lines={chats} who={(seat) => ({ name: names[seat] || 'Player', skin: skins[seat] })} />
+
       <footer className="hint">
         <span>{hintFor(phase, state, mySeat, names, iAmOut)}</span>
-        <div className="emote-wrap">
-          <button type="button" className="emote-btn" onClick={() => setEmoteOpen((o) => !o)} aria-label="Send a reaction">
-            😄
-          </button>
-          {emoteOpen && (
-            <div className="emote-menu">
-              {EMOTES.map((e) => (
-                <button type="button" key={e} onClick={() => sendEmote(e)}>
-                  {e}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <ReactionDock onEmote={sendEmote} onSend={sendChat} />
       </footer>
 
       {prefs.sound && audioState !== 'running' && <div className="sound-pill">🔈 Tap the screen to turn sound on</div>}

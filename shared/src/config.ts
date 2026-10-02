@@ -93,3 +93,11 @@ export const ROYALE = {
   targets: [5, 10] as readonly number[],
   defaultTarget: 5,
 } as const;
+
+/** Pauses between a shot coming to rest and the next turn starting. Kept short so games feel quick. */
+export const PACE = {
+  /** Nothing special happened: straight on to the next player. */
+  quietMs: 100,
+  /** Someone was knocked off or fell off: long enough to see it and read the comment, then play on. */
+  eventMs: 1100,
+} as const;

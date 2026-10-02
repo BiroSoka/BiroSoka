@@ -57,7 +57,7 @@ const STEPS: Step[] = [
     title: 'Flick!',
     body: (
       <>
-        The match starts by itself with a coin toss to decide who flicks first, then you take turns. You have 15 seconds per turn. Your pen is always the one nearest you, and the other player sees the same shot play out live. Send reactions with the smiley button.
+        The match starts by itself with a coin toss to decide who flicks first, then you take turns. You have 15 seconds per turn. Your pen is always the one nearest you, and the other player sees the same shot play out live. Send reactions or a short message (up to 40 characters) with the smiley button. Messages are not saved anywhere.
       </>
     ),
   },

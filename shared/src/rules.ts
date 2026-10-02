@@ -48,18 +48,20 @@ export function skipTurn(match: MatchState): MatchState {
 }
 
 /**
- * Scoring rules (PRD 4.2):
- * - knock the opponent off and stay on: +1
- * - fall off yourself without taking them with you: -1
+ * Scoring rules:
+ * - knock the opponent off and stay on: +1 to you
+ * - fall off yourself without taking them with you: +1 to your opponent (you are simply knocked out;
+ *   there are no minus points, which keeps games short)
  * - both off: nothing
+ * `delta` is the shooter's change and `oppDelta` the opponent's.
  */
-export function scoreShot(shooter: Seat, out: readonly boolean[]): { outcome: Outcome; delta: number } {
+export function scoreShot(shooter: Seat, out: readonly boolean[]): { outcome: Outcome; delta: number; oppDelta: number } {
   const selfOut = out[shooter];
   const oppOut = out[other(shooter)];
-  if (selfOut && oppOut) return { outcome: 'both-off', delta: 0 };
-  if (oppOut) return { outcome: 'knockout', delta: 1 };
-  if (selfOut) return { outcome: 'own-goal', delta: -1 };
-  return { outcome: 'none', delta: 0 };
+  if (selfOut && oppOut) return { outcome: 'both-off', delta: 0, oppDelta: 0 };
+  if (oppOut) return { outcome: 'knockout', delta: 1, oppDelta: 0 };
+  if (selfOut) return { outcome: 'own-goal', delta: 0, oppDelta: 1 };
+  return { outcome: 'none', delta: 0, oppDelta: 0 };
 }
 
 export function applyShotResult(
@@ -68,10 +70,12 @@ export function applyShotResult(
   flick: Flick,
   result: ShotResult,
 ): ResolvedShot {
-  const { outcome, delta } = scoreShot(shooter, result.out);
+  const { outcome, delta, oppDelta } = scoreShot(shooter, result.out);
+  const opp = other(shooter);
   const scores: [number, number] = [...before.scores];
   scores[shooter] += delta;
-  const winner = scores[shooter] >= before.target ? shooter : null;
+  scores[opp] += oppDelta;
+  const winner = scores[shooter] >= before.target ? shooter : scores[opp] >= before.target ? opp : null;
   const reset = result.out.some(Boolean);
   const shotNo = before.shotNo + 1;
   const pens: [Pose, Pose] = reset

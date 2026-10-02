@@ -21,7 +21,7 @@ export function HowTo({ navigate }: { navigate: Navigate }) {
           <b>15 seconds a turn.</b> You have 15 seconds to flick. Run out of time and your turn passes to your opponent. In Battle Royale it moves to the next player.
         </li>
         <li>
-          <b>Score.</b> Knock their pen off the desk and stay on it: <b>+1</b>. Fall off yourself: <b>−1</b>. Both fall: nothing.
+          <b>Score.</b> Knock their pen off the desk and stay on it: <b>+1</b>. Fall off yourself and your opponent gets <b>+1</b>. Both fall: nothing.
         </li>
         <li>
           <b>Win.</b> First to the target score wins. Pens go back to the middle after every knock-off.

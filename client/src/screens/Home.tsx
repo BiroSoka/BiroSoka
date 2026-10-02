@@ -26,6 +26,7 @@ export function Home({ navigate }: { navigate: Navigate }) {
         </Button>
         <Button variant="red" size="lg" onClick={() => navigate({ name: 'online' })}>
           <span className="btn-icon">🌍</span> Play a Friend Online
+          {!prefs.seenRoyale && <span className="new-badge corner">⚔️ NEW: Battle Royale</span>}
         </Button>
         <div className="menu-row">
           <Button variant="yellow" onClick={() => navigate({ name: 'pens' })}>

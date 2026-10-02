@@ -21,6 +21,8 @@ export interface Prefs {
   difficulty: Difficulty;
   stats: Stats;
   seenTutorial: boolean;
+  /** Has tried Battle Royale (the NEW badge goes away). */
+  seenRoyale: boolean;
 }
 
 const KEY = 'biro-soka:prefs:v1';
@@ -37,6 +39,7 @@ const DEFAULTS: Prefs = {
   difficulty: 'medium',
   stats: { aiWins: 0, aiLosses: 0, beatHard: false, onlineWins: 0, onlineLosses: 0 },
   seenTutorial: false,
+  seenRoyale: false,
 };
 
 function load(): Prefs {

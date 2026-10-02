@@ -28,8 +28,10 @@ export function OnlineMenu({ navigate, initialCode }: { navigate: Navigate; init
     const target = mode === 'royale' && !ROYALE.targets.includes(prefs.target) ? ROYALE.defaultTarget : prefs.target;
     const r = await online.create(name, prefs.skin, target, mode);
     setBusy(null);
-    if (r.ok) navigate({ name: 'lobby' });
-    else setError(r.error);
+    if (r.ok) {
+      if (mode === 'royale') setPrefs({ seenRoyale: true });
+      navigate({ name: 'lobby' });
+    } else setError(r.error);
   }
 
   async function join() {
@@ -39,8 +41,10 @@ export function OnlineMenu({ navigate, initialCode }: { navigate: Navigate; init
     setError(null);
     const r = await online.joinRoom(code, name, prefs.skin);
     setBusy(null);
-    if (r.ok) navigate(r.room.mode === 'royale' ? { name: 'lobby' } : { name: 'game-online' });
-    else setError(r.error);
+    if (r.ok) {
+      if (r.room.mode === 'royale') setPrefs({ seenRoyale: true });
+      navigate(r.room.mode === 'royale' ? { name: 'lobby' } : { name: 'game-online' });
+    } else setError(r.error);
   }
 
   const targets: readonly number[] = mode === 'royale' ? ROYALE.targets : TARGET_SCORES;
@@ -104,7 +108,15 @@ export function OnlineMenu({ navigate, initialCode }: { navigate: Navigate; init
           onChange={setMode}
           options={[
             { value: 'duel' as GameMode, label: '1 vs 1' },
-            { value: 'royale' as GameMode, label: '⚔️ Battle Royale' },
+            {
+              value: 'royale' as GameMode,
+              label: (
+                <>
+                  ⚔️ Battle Royale
+                  {!prefs.seenRoyale && <span className="new-badge">NEW</span>}
+                </>
+              ),
+            },
           ]}
         />
         <p className="muted">

@@ -3,6 +3,7 @@ import {
   GUIDE,
   INPUT,
   PEN,
+  PACE,
   PHYS,
   previewShot,
   Sim,
@@ -380,7 +381,7 @@ export class RoyaleController {
     this.emit();
 
     const interesting = msg.eliminated.length > 0 || msg.roundOver;
-    this.later(interesting ? 1900 : 300, () => {
+    this.later(interesting ? PACE.eventMs : PACE.quietMs, () => {
       const reset = msg.after.round !== this.state.round;
       this.state = msg.after;
       if (reset) {

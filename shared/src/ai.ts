@@ -28,7 +28,7 @@ export const DIFFICULTY: Record<Difficulty, DifficultyProfile> = {
   easy: { samples: 24, angleNoise: 0.11, powerNoise: 0.16, sloppiness: 0.45, refineTop: 0, refineTweaks: 0, lookaheadTop: 0, lookaheadSamples: 0, caution: 0, budgetMs: 1500 },
   medium: { samples: 90, angleNoise: 0.045, powerNoise: 0.07, sloppiness: 0.12, refineTop: 0, refineTweaks: 0, lookaheadTop: 0, lookaheadSamples: 0, caution: 0, budgetMs: 2000 },
   // Desk Champ: searches wider, polishes its best shots, thinks about your reply, barely misses.
-  hard: { samples: 320, angleNoise: 0.006, powerNoise: 0.012, sloppiness: 0, refineTop: 8, refineTweaks: 12, lookaheadTop: 8, lookaheadSamples: 28, caution: 0.85, budgetMs: 3000 },
+  hard: { samples: 260, angleNoise: 0.006, powerNoise: 0.012, sloppiness: 0, refineTop: 6, refineTweaks: 10, lookaheadTop: 6, lookaheadSamples: 22, caution: 0.85, budgetMs: 2000 },
 };
 
 /** The previous Desk Champ settings, kept so benchmarks can measure improvements. */
@@ -54,8 +54,8 @@ function powerForDistance(dist: number) {
 
 /** How good a finished shot is for `seat`. Higher is better. */
 function evaluate(result: ShotResult, seat: Seat): number {
-  const { delta } = scoreShot(seat, result.out);
-  let value = delta * 100;
+  const { delta, oppDelta } = scoreShot(seat, result.out);
+  let value = (delta - oppDelta) * 100;
   if (result.out[seat] && result.out[other(seat)]) value -= 5;
 
   const me = result.final[seat];
@@ -148,8 +148,12 @@ export function planAiShot(
 
   candidates.sort((a, b) => b.value - a.value);
 
+  // A clean knockout can't be improved on, so skip the polishing and reply checks and answer quickly.
+  const top = candidates[0];
+  const hasKnockout = !!top && top.result.out[other(seat)] && !top.result.out[seat];
+
   // Stage 2: polish the best shots with small tweaks.
-  if (profile.refineTop > 0) {
+  if (profile.refineTop > 0 && !hasKnockout) {
     const seeds = candidates.slice(0, profile.refineTop).map((c) => c.flick);
     outer: for (const s of seeds) {
       for (let i = 0; i < profile.refineTweaks; i++) {
@@ -162,7 +166,7 @@ export function planAiShot(
 
   // Stage 3: don't leave the opponent an easy knockout.
   let ranked = candidates;
-  if (profile.lookaheadTop > 0) {
+  if (profile.lookaheadTop > 0 && !hasKnockout) {
     const oppSeat = other(seat);
     const finalists = candidates.slice(0, profile.lookaheadTop);
     for (const c of finalists) {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  EMOTES,
   SKINS,
+  cleanChat,
   distinctSkins,
   getSkin,
   newMatch,
@@ -13,6 +13,7 @@ import {
   type Seat,
 } from '@biro/shared';
 import type { Navigate } from '../App';
+import { ChatFeed, ReactionDock, type ChatLine } from '../components/ChatDock';
 import { CoinToss } from '../components/CoinToss';
 import { PlayerAvatar } from '../components/PlayerAvatar';
 import { Button, Confetti, Modal, Toggle } from '../components/ui';
@@ -53,7 +54,7 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
   const [toast, setToast] = useState<Toast | null>(null);
   const [paused, setPaused] = useState(false);
   const [confirmQuit, setConfirmQuit] = useState(false);
-  const [emoteOpen, setEmoteOpen] = useState(false);
+  const [chats, setChats] = useState<ChatLine[]>([]);
   const [bubbles, setBubbles] = useState<{ id: number; seat: Seat; emote: Emote }[]>([]);
   const [unlocked, setUnlocked] = useState<string[]>([]);
   // The opening match is fixed up front so the coin toss can show who starts. Only the very
@@ -115,6 +116,7 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
 
     const offShot = online.onShot((m) => ctrl.receiveShot(m));
     const offEmote = online.onEmote(({ seat, emote }) => showBubble(seat as Seat, emote));
+    const offChat = online.onChat(({ seat, text }) => showChat(seat, text));
     // The server's 15-second clock ran out for whoever was due to flick.
     const offSkip = online.onSkip((m) => {
       if (!m.match) return;
@@ -124,6 +126,7 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
     return () => {
       offShot();
       offEmote();
+      offChat();
       offSkip();
       ctrl.destroy();
       ctrlRef.current = null;
@@ -186,7 +189,22 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
   function sendEmote(e: Emote) {
     online.emote(e);
     showBubble(mySeat, e);
-    setEmoteOpen(false);
+  }
+
+  function showChat(seat: number, text: string) {
+    const id = Date.now() + Math.random();
+    setChats((c) => [...c.slice(-4), { id, seat, text }]);
+    window.setTimeout(() => setChats((c) => c.filter((x) => x.id !== id)), 6500);
+  }
+
+  /** Returns a problem to show the player, or null when the message went out. */
+  async function sendChat(raw: string): Promise<string | null> {
+    const text = cleanChat(raw);
+    if (!text) return null;
+    const r = await online.chat(text);
+    if (!r.ok) return r.error;
+    showChat(mySeat, text);
+    return null;
   }
 
   // ---- results / stats ----------------------------------------------------
@@ -333,24 +351,11 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
         />
       )}
 
+      {mode === 'online' && <ChatFeed lines={chats} who={(seat) => ({ name: names[seat] ?? 'Player', skin: skins[seat] })} />}
+
       <footer className="hint">
         <span>{hintFor(phase, match, mySeat, oppName)}</span>
-        {mode === 'online' && (
-          <div className="emote-wrap">
-            <button type="button" className="emote-btn" onClick={() => setEmoteOpen((o) => !o)} aria-label="Send a reaction">
-              😄
-            </button>
-            {emoteOpen && (
-              <div className="emote-menu">
-                {EMOTES.map((e) => (
-                  <button type="button" key={e} onClick={() => sendEmote(e)}>
-                    {e}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        {mode === 'online' && <ReactionDock onEmote={sendEmote} onSend={sendChat} />}
       </footer>
 
       {prefs.sound && audioState !== 'running' && <div className="sound-pill">🔈 Tap the screen to turn sound on</div>}
@@ -367,7 +372,7 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
               <li>Drag <b>back</b>, away from where you want it to go.</li>
               <li>Let go to flick it. Grab near the ends for spin.</li>
             </ol>
-            <p className="muted small">Knock their pen off: +1. Fall off yourself: −1.</p>
+            <p className="muted small">Knock their pen off: +1. Fall off yourself and they get +1.</p>
             <Button variant="yellow" size="sm" onClick={() => setPrefs({ seenTutorial: true })}>
               Got it
             </Button>
@@ -508,8 +513,8 @@ function describeShot(s: LastShot, mySeat: Seat, oppName: string): Toast | null 
         : { id: s.id, title: ctx.ace ? 'ACED!' : 'KNOCKED OFF!', sub: `+1 to ${oppName}`, quip: pickQuip('ko-lose', ctx), tone: 'bad' };
     case 'own-goal':
       return mine
-        ? { id: s.id, title: 'OWN GOAL!', sub: 'You fell off: −1', quip: pickQuip('own-me'), tone: 'bad' }
-        : { id: s.id, title: 'THEY FELL OFF!', sub: `−1 to ${oppName}`, quip: pickQuip('own-them'), tone: 'good' };
+        ? { id: s.id, title: 'OWN GOAL!', sub: `You fell off: +1 to ${oppName}`, quip: pickQuip('own-me'), tone: 'bad' }
+        : { id: s.id, title: 'THEY FELL OFF!', sub: 'Their own goal: +1 to you', quip: pickQuip('own-them'), tone: 'good' };
     case 'both-off':
       return { id: s.id, title: 'DOUBLE DROP!', sub: 'Both off: no points', quip: pickQuip('both'), tone: 'neutral' };
     default:
