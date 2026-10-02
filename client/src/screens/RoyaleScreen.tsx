@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { SKINS, cleanChat, distinctSkinList, getSkin, type Emote, type RoyaleState } from '@biro/shared';
+import { NETWORK, SKINS, cleanChat, distinctSkinList, getSkin, type Emote, type RoyaleState } from '@biro/shared';
 import type { Navigate } from '../App';
 import { ChatFeed, ReactionDock, type ChatLine } from '../components/ChatDock';
 import { PlayerAvatar } from '../components/PlayerAvatar';
+import { ShareButton } from '../components/ShareButton';
 import { TurnTimer } from '../components/TurnTimer';
 import { Button, Confetti, Modal, Toggle } from '../components/ui';
 import { getPrefs, isUnlocked, setPrefs, unlockedSkins, usePrefs } from '../lib/prefs';
@@ -278,9 +279,12 @@ export function RoyaleScreen({ navigate }: { navigate: Navigate }) {
 
       {prefs.sound && audioState !== 'running' && <div className="sound-pill">🔈 Tap the screen to turn sound on</div>}
       {offline.length > 0 && !abandoned && (
-        <div className="banner">{offline.map((i) => names[i]).join(', ')} {offline.length > 1 ? 'are' : 'is'} offline. Their turns are skipped after 15s.</div>
+        <div className="banner">{offline.map((i) => names[i]).join(', ')} {offline.length > 1 ? 'are' : 'is'} offline. The clock waits up to {Math.round(NETWORK.holdMaxMs / 1000)}s for them.</div>
       )}
-      {net.connection === 'reconnecting' && <div className="banner warn">You're offline. Reconnecting…</div>}
+      {net.room?.turnHeld && state && state.turn !== mySeat && !offline.includes(state.turn) && (
+        <div className="banner">{names[state.turn]}'s connection is slow. Giving them a little longer…</div>
+      )}
+      {net.connection === 'reconnecting' && <div className="banner warn">You're offline. Reconnecting… (your clock is paused for a moment)</div>}
 
       {paused && !confirmQuit && (
         <Modal onClose={() => setPaused(false)}>
@@ -337,6 +341,17 @@ export function RoyaleScreen({ navigate }: { navigate: Navigate }) {
             </div>
           )}
           <div className="modal-actions">
+            {iWon && (
+              <ShareButton
+                name={names[mySeat]}
+                headline="I won Battle Royale!"
+                score={`${state.scores[mySeat]} ${state.scores[mySeat] === 1 ? 'point' : 'points'}`}
+                detail={`${present.length} players · first to ${state.target}`}
+                skinId={skins[mySeat]}
+                table={prefs.table}
+                text={`I just won a ${present.length}-player Battle Royale on Biro Soka! Can you beat me?`}
+              />
+            )}
             {isHost ? (
               <Button variant="blue" onClick={playAgain}>
                 Play again

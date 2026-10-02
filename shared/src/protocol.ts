@@ -32,6 +32,8 @@ export interface RoomSnapshot {
    * null when no turn is running.
    */
   turnMsLeft: number | null;
+  /** The clock is paused because the player whose turn it is dropped or stopped responding. */
+  turnHeld: boolean;
 }
 
 /** Broadcast after the server referees a 1 v 1 shot. */
@@ -105,6 +107,8 @@ export interface ServerToClientEvents {
   'turn:skip': (msg: SkipMessage) => void;
   emote: (p: { seat: number; emote: Emote }) => void;
   chat: (p: { seat: number; text: string }) => void;
+  /** Connection check: the client answers straight away. Lets the server measure delay and spot a dead line. */
+  'lag:ping': (ack: () => void) => void;
 }
 
 export const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';

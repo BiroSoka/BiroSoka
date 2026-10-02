@@ -15,6 +15,7 @@ import {
 import type { Navigate } from '../App';
 import { ChatFeed, ReactionDock, type ChatLine } from '../components/ChatDock';
 import { CoinToss } from '../components/CoinToss';
+import { ShareButton } from '../components/ShareButton';
 import { PlayerAvatar } from '../components/PlayerAvatar';
 import { Button, Confetti, Modal, Toggle } from '../components/ui';
 import { GameController, type HudState, type LastShot, type Phase } from '../game/controller';
@@ -360,8 +361,11 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
 
       {prefs.sound && audioState !== 'running' && <div className="sound-pill">🔈 Tap the screen to turn sound on</div>}
 
-      {oppDisconnected && <div className="banner">{oppName} lost connection. Waiting for them to come back…</div>}
-      {mode === 'online' && net.connection === 'reconnecting' && <div className="banner warn">You're offline. Reconnecting…</div>}
+      {oppDisconnected && <div className="banner">{oppName} lost connection. The clock is paused while they reconnect…</div>}
+      {mode === 'online' && !oppDisconnected && net.room?.turnHeld && hud?.match.turn === oppSeat && (
+        <div className="banner">{oppName}'s connection is slow. Giving them a little longer…</div>
+      )}
+      {mode === 'online' && net.connection === 'reconnecting' && <div className="banner warn">You're offline. Reconnecting… (your clock is paused for a moment)</div>}
 
       {showCoach && (
         <div className="coach" onClick={() => setPrefs({ seenTutorial: true })}>
@@ -431,6 +435,17 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
             </div>
           )}
           <div className="modal-actions">
+            {iWon && (
+              <ShareButton
+                name={names[mySeat]}
+                headline={`I beat ${oppName}!`}
+                score={`${match.scores[mySeat]} – ${match.scores[oppSeat]}`}
+                detail={mode === 'ai' ? `vs Computer · ${difficulty[0].toUpperCase()}${difficulty.slice(1)} · first to ${match.target}` : `Online 1v1 · first to ${match.target}`}
+                skinId={skins[mySeat]}
+                table={prefs.table}
+                text={`I just beat ${oppName} ${match.scores[mySeat]}–${match.scores[oppSeat]} at Biro Soka! Think you can flick better?`}
+              />
+            )}
             <Button variant="blue" onClick={rematch} disabled={!!rematchMine}>
               {rematchMine ? 'Waiting for opponent…' : rematchTheirs ? 'Accept rematch' : 'Rematch'}
             </Button>

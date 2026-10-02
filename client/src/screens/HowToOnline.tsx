@@ -76,6 +76,7 @@ const TROUBLE: [string, string][] = [
   ['“No room called …”', 'Check the code for typos. Codes are 5 characters and never contain 0, O, 1, I or L. A code stops working once the host leaves the waiting room.'],
   ['“That room is already full”', 'A 1 vs 1 room is for exactly two players and a Battle Royale room takes up to four. Nobody can join once a Battle Royale has started. The host can create a fresh room.'],
   ['Stuck on “Connecting to server…”', 'The server may be waking up after being idle. Wait about a minute, then try again.'],
+  ['A player’s connection dropped or is slow', 'The turn clock pauses for up to 30 seconds while they reconnect, and they get at least 8 seconds once they are back. Flicks that arrive a little late on a slow connection still count. If someone stays away, their turn is skipped, and after about 90 seconds they are removed from the game.'],
 ];
 
 export function HowToOnline({ navigate }: { navigate: Navigate }) {

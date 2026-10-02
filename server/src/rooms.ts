@@ -5,7 +5,6 @@ import {
   DEFAULT_TARGET,
   ROYALE,
   TARGET_SCORES,
-  TURN,
   getSkin,
   newMatch,
   newRoyale,
@@ -37,6 +36,10 @@ interface SeatState {
   left: boolean;
   /** Timer that forfeits the seat if the player doesn't reconnect. */
   dropTimer: NodeJS.Timeout | null;
+  /** Smoothed round-trip time to this player in ms (0 until measured). */
+  rtt: number;
+  /** When we last heard anything from this player. */
+  lastSeen: number;
 }
 
 export interface Room {
@@ -50,9 +53,13 @@ export interface Room {
   royale: RoyaleState | null;
   rematch: [boolean, boolean];
   lastActive: number;
-  /** When the current turn times out (epoch ms, includes the grace period). */
+  /** When the on-screen turn clock reaches zero (epoch ms). The server skips a little later, see graceFor(). */
   turnDeadline: number | null;
   turnTimer: NodeJS.Timeout | null;
+  /** Set while the clock is paused waiting for a player who dropped or stopped responding. */
+  turnHold: { seat: number; msLeft: number; since: number } | null;
+  /** How much more pausing this turn may use (refilled at the start of every turn). */
+  holdLeftMs: number;
 }
 
 /** How long a disconnected player has to come back before they are dropped from the game. */
@@ -90,7 +97,7 @@ export class RoomStore {
     const royale = mode === 'royale';
     const targets: readonly number[] = royale ? ROYALE.targets : TARGET_SCORES;
     const seats: (SeatState | null)[] = Array.from({ length: royale ? ROYALE.maxPlayers : 2 }, () => null);
-    seats[0] = { token, name, skin: getSkin(skin).id, socketId, left: false, dropTimer: null };
+    seats[0] = { token, name, skin: getSkin(skin).id, socketId, left: false, dropTimer: null, rtt: 0, lastSeen: Date.now() };
     const room: Room = {
       code: this.newCode(),
       status: 'waiting',
@@ -103,6 +110,8 @@ export class RoomStore {
       lastActive: Date.now(),
       turnDeadline: null,
       turnTimer: null,
+      turnHold: null,
+      holdLeftMs: 0,
     };
     this.rooms.set(room.code, room);
     return { room, token };
@@ -114,7 +123,7 @@ export class RoomStore {
     const seat = room.seats.findIndex((s) => s === null);
     if (seat < 0) return { error: room.mode === 'royale' ? 'That room is full (4 players).' : 'That room is already full.' };
     const token = randomBytes(16).toString('hex');
-    room.seats[seat] = { token, name, skin: getSkin(skin).id, socketId, left: false, dropTimer: null };
+    room.seats[seat] = { token, name, skin: getSkin(skin).id, socketId, left: false, dropTimer: null, rtt: 0, lastSeen: Date.now() };
     room.lastActive = Date.now();
     if (room.mode === 'duel') {
       // Coin toss decides who starts the first game, whoever created the room.
@@ -286,8 +295,8 @@ export function snapshot(room: Room): RoomSnapshot {
     match: room.match,
     royale: room.royale,
     rematch: room.rematch,
-    // The on-screen clock reaches zero a little before the server actually skips (the grace period).
-    turnMsLeft: room.turnDeadline === null ? null : Math.max(0, room.turnDeadline - Date.now() - TURN.graceMs),
+    turnMsLeft: room.turnDeadline === null ? null : Math.max(0, room.turnDeadline - Date.now()),
+    turnHeld: room.turnHold !== null,
   };
 }
 

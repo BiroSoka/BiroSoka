@@ -495,3 +495,5 @@ input { font: inherit; -webkit-user-select: text; user-select: text; }
 /* The message panel is pinned to the screen, not to the button, so it can never run off the edge of a phone. */
 .emote-menu.chat-panel { position: fixed; right: calc(var(--sar) + 10px); bottom: calc(var(--sab) + 66px); }
 .chat-feed { bottom: calc(var(--sab) + 80px); }
+
+.share-msg { margin: 0; text-align: center; }

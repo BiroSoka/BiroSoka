@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { Server, type Socket } from 'socket.io';
 import {
   EMOTES,
+  NETWORK,
   PACE,
   PHYS,
   TURN,
@@ -27,6 +28,8 @@ const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? '*';
 const MAX_ROOMS = Number(process.env.MAX_ROOMS ?? 2000);
 /** Seconds a player gets for each turn (override with TURN_SECONDS, handy for testing). */
 const TURN_MS = Number(process.env.TURN_SECONDS ?? TURN.seconds) * 1000;
+/** How long the clock waits per turn for a player who dropped (seconds; overridable for testing). */
+const HOLD_MS = Number(process.env.TURN_HOLD_SECONDS ?? NETWORK.holdMaxMs / 1000) * 1000;
 
 interface SocketData {
   code?: string;
@@ -81,18 +84,74 @@ function clearTurnTimer(room: Room) {
   if (room.turnTimer) clearTimeout(room.turnTimer);
   room.turnTimer = null;
   room.turnDeadline = null;
+  room.turnHold = null;
+}
+
+/** A player looks offline if they have no connection, or we have heard nothing from them for a while. */
+function looksOffline(room: Room, seat: number): boolean {
+  const s = room.seats[seat];
+  if (!s) return false;
+  return s.socketId === null || Date.now() - s.lastSeen > NETWORK.unresponsiveMs;
+}
+
+/** How long past zero a flick is still accepted: a little for everyone, more for a slow connection. */
+function graceFor(room: Room, seat: number | null): number {
+  const rtt = seat === null ? 0 : (room.seats[seat]?.rtt ?? 0);
+  return Math.min(NETWORK.graceMaxMs, TURN.graceMs + Math.round(rtt));
 }
 
 /**
  * Start the clock for the turn that is about to begin. `leadMs` covers the time the players' screens
  * still need to play out the last shot (and any coin toss) before anyone can act.
+ * `sameTurn` is true when carrying on a turn that was paused, so its pause allowance is not refilled.
  */
-function armTurnTimer(room: Room, leadMs = 0) {
+function armTurnTimer(room: Room, leadMs = 0, turnMs = TURN_MS, sameTurn = false) {
   clearTurnTimer(room);
   if (room.status !== 'playing') return;
-  const ms = leadMs + TURN_MS + TURN.graceMs;
-  room.turnDeadline = Date.now() + ms;
-  room.turnTimer = setTimeout(() => onTurnTimeout(room), ms);
+  if (!sameTurn) room.holdLeftMs = HOLD_MS;
+  const seat = rooms.turnSeat(room);
+  // Never run the clock down on someone who cannot see it: wait for them instead, for a limited time.
+  if (seat !== null && room.holdLeftMs > 0 && looksOffline(room, seat)) {
+    holdTurn(room, seat, turnMs);
+    return;
+  }
+  // The on-screen clock reaches zero here; the server waits a little longer (see onTurnTimeout) before skipping.
+  room.turnDeadline = Date.now() + leadMs + turnMs;
+  room.turnTimer = setTimeout(() => onTurnTimeout(room), leadMs + turnMs + graceFor(room, seat));
+}
+
+/** Pause the clock for a player who dropped or stopped responding, for at most what is left of their allowance. */
+function holdTurn(room: Room, seat: number, msLeft: number) {
+  clearTurnTimer(room);
+  room.turnHold = { seat, msLeft, since: Date.now() };
+  room.turnTimer = setTimeout(() => expireHold(room), room.holdLeftMs);
+  broadcast(room);
+}
+
+/** They did not come back in time: the clock carries on with what was left, then the turn passes. */
+function expireHold(room: Room) {
+  const held = room.turnHold;
+  if (!held || room.status !== 'playing') return;
+  room.holdLeftMs = 0;
+  armTurnTimer(room, 0, held.msLeft, true);
+  broadcast(room);
+}
+
+/** The held player is back (or answered): carry on, giving them a fair amount of time. */
+function resumeTurn(room: Room, seat: number) {
+  const held = room.turnHold;
+  if (!held || held.seat !== seat || room.status !== 'playing') return;
+  room.holdLeftMs = Math.max(0, room.holdLeftMs - (Date.now() - held.since));
+  armTurnTimer(room, 0, Math.min(TURN_MS, Math.max(held.msLeft, NETWORK.resumeMinMs)), true);
+  broadcast(room);
+}
+
+/** Note that we just heard from this player. If the clock was waiting for them, it carries on. */
+function touch(room: Room, seat: number) {
+  const s = room.seats[seat];
+  if (!s) return;
+  s.lastSeen = Date.now();
+  if (s.socketId !== null) resumeTurn(room, seat);
 }
 
 /** Time the clients spend animating a shot and showing its result before the next turn begins. */
@@ -102,7 +161,19 @@ function shotLeadMs(steps: number, hadEvent: boolean, extraMs = 0) {
 
 function onTurnTimeout(room: Room) {
   room.turnTimer = null;
-  if (room.status !== 'playing') return;
+  if (room.status !== 'playing' || room.turnDeadline === null) return;
+  const seat = rooms.turnSeat(room);
+  // A slow connection may have earned a longer allowance since the clock was set: wait for it.
+  const wait = room.turnDeadline + graceFor(room, seat) - Date.now();
+  if (wait > 25) {
+    room.turnTimer = setTimeout(() => onTurnTimeout(room), wait);
+    return;
+  }
+  // Out of time, but they are off the network: give them a bit longer instead of skipping a turn they could not play.
+  if (seat !== null && room.holdLeftMs > 0 && looksOffline(room, seat)) {
+    holdTurn(room, seat, NETWORK.resumeMinMs);
+    return;
+  }
   const skipped = rooms.skip(room);
   if (!skipped) return;
   io.to(room.code).emit('turn:skip', skipped);
@@ -171,6 +242,28 @@ function chatAllowed(socket: GameSocket): boolean {
 }
 
 io.on('connection', (socket: GameSocket) => {
+  // Any message from a player counts as a sign of life for the turn clock.
+  socket.onAny(() => {
+    const ctx = currentRoom(socket);
+    if (ctx) touch(ctx.room, ctx.seat);
+  });
+
+  // Check the connection every few seconds. The round trip tells us how slow the line is (a slow line gets
+  // a longer late-flick allowance) and an answer tells us the player is still reachable.
+  const lagTimer = setInterval(() => {
+    const ctx = currentRoom(socket);
+    if (!ctx) return;
+    const sent = Date.now();
+    socket.timeout(NETWORK.pingEveryMs * 3).emit('lag:ping', (err) => {
+      if (err) return;
+      const s = ctx.room.seats[ctx.seat];
+      if (!s || s.socketId !== socket.id) return;
+      const rtt = Date.now() - sent;
+      s.rtt = s.rtt === 0 ? rtt : Math.round(s.rtt * 0.6 + rtt * 0.4);
+      touch(ctx.room, ctx.seat);
+    });
+  }, NETWORK.pingEveryMs);
+
   const fail = (ack: (r: JoinResult) => void, error: string) => ack({ ok: false, error });
 
   socket.on('room:create', (p, ack) => {
@@ -209,7 +302,9 @@ io.on('connection', (socket: GameSocket) => {
     if (s.dropTimer) clearTimeout(s.dropTimer);
     s.dropTimer = null;
     s.socketId = socket.id;
+    s.lastSeen = Date.now();
     attach(socket, room, seat);
+    resumeTurn(room, seat); // the clock was waiting for them
     ack({ ok: true, code: room.code, seat, token: s.token, room: snapshot(room) });
     broadcast(room);
   });
@@ -295,12 +390,18 @@ io.on('connection', (socket: GameSocket) => {
   });
 
   socket.on('disconnect', () => {
+    clearInterval(lagTimer);
     const ctx = currentRoom(socket);
     if (!ctx) return;
     const { room, seat } = ctx;
     const s = room.seats[seat]!;
     s.socketId = null;
-    // Everyone else sees them as offline straight away; the turn clock keeps running for them.
+    // If it is their turn, pause the clock while they reconnect (for a limited time) instead of running it down.
+    if (room.status === 'playing' && rooms.turnSeat(room) === seat && !room.turnHold && room.holdLeftMs > 0) {
+      const msLeft = room.turnDeadline === null ? TURN_MS : Math.min(TURN_MS, Math.max(0, room.turnDeadline - Date.now()));
+      holdTurn(room, seat, msLeft);
+    }
+    // Everyone else sees them as offline straight away.
     broadcast(room);
     const grace = room.status === 'waiting' ? RECONNECT_GRACE_MS / 3 : RECONNECT_GRACE_MS;
     s.dropTimer = setTimeout(() => vacate(room, seat), grace);

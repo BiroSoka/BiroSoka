@@ -101,3 +101,17 @@ export const PACE = {
   /** Someone was knocked off or fell off: long enough to see it and read the comment, then play on. */
   eventMs: 1100,
 } as const;
+
+/** How the turn clock treats players with a poor connection. */
+export const NETWORK = {
+  /** The most late-flick allowance a slow connection can earn (it starts at TURN.graceMs). */
+  graceMaxMs: 5000,
+  /** The clock waits at most this long, per turn, for a player who dropped or stopped responding. */
+  holdMaxMs: 30_000,
+  /** A player who comes back gets at least this much time left on their turn. */
+  resumeMinMs: 8000,
+  /** No sign of life from a player for this long counts as unresponsive. */
+  unresponsiveMs: 6000,
+  /** How often the server checks each player's connection. */
+  pingEveryMs: 3000,
+} as const;

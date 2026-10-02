@@ -127,6 +127,8 @@ class OnlineClient {
     s.on('turn:skip', (m) => this.skipHandlers.forEach((h) => h(m)));
     s.on('emote', (p) => this.emoteHandlers.forEach((h) => h(p)));
     s.on('chat', (p) => this.chatHandlers.forEach((h) => h(p)));
+    // The server checks now and then that we can still be reached; answer at once.
+    s.on('lag:ping', (ack) => ack());
     s.connect();
     return s;
   }
