@@ -9,6 +9,7 @@ import {
   NETWORK,
   PACE,
   PHYS,
+  QUICK_TARGET,
   TURN,
   cleanChat,
   cleanName,
@@ -20,6 +21,7 @@ import {
   type Seat,
   type ServerToClientEvents,
 } from '@biro/shared';
+import { MatchQueue } from './matchmaking';
 import { RECONNECT_GRACE_MS, RoomStore, snapshot, type Room } from './rooms';
 
 const PORT = Number(process.env.PORT ?? 3001);
@@ -47,9 +49,23 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents, Record<string,
   maxHttpBufferSize: 10_000, // messages here are tiny; refuse anything bigger
 });
 const rooms = new RoomStore();
+const queue = new MatchQueue();
+const socketAlive = (id: string) => io.sockets.sockets.get(id)?.connected === true;
+
+/**
+ * Keep-awake. Free hosts (Render's free plan) put a service to sleep after ~15 minutes without a web request,
+ * and the next visitor waits up to a minute for it to wake. With KEEP_AWAKE=true the server asks for its own
+ * public address every few minutes, which counts as a visit. (The very first wake-up still needs an outside
+ * pinger such as UptimeRobot, see DEPLOY.md.) Render fills in RENDER_EXTERNAL_URL by itself.
+ */
+const KEEP_AWAKE = process.env.KEEP_AWAKE === 'true';
+const SELF_PING_URL = process.env.SELF_PING_URL ?? process.env.RENDER_EXTERNAL_URL ?? '';
+const SELF_PING_MS = Number(process.env.SELF_PING_SECONDS ?? 600) * 1000;
+let selfPings = 0;
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, rooms: rooms.size });
+  res.set('Cache-Control', 'no-store');
+  res.json({ ok: true, rooms: rooms.size, uptimeSeconds: Math.round(process.uptime()), ...(KEEP_AWAKE ? { selfPings } : {}) });
 });
 
 // In production the server also hosts the built React app.
@@ -268,6 +284,7 @@ io.on('connection', (socket: GameSocket) => {
 
   socket.on('room:create', (p, ack) => {
     if (typeof ack !== 'function') return;
+    queue.cancel(socket.id);
     if (rooms.size >= MAX_ROOMS) return fail(ack, 'The server is busy right now. Try again in a minute.');
     const existing = currentRoom(socket);
     if (existing) vacate(existing.room, existing.seat);
@@ -279,6 +296,7 @@ io.on('connection', (socket: GameSocket) => {
 
   socket.on('room:join', (p, ack) => {
     if (typeof ack !== 'function') return;
+    queue.cancel(socket.id);
     const code = normalizeCode(String(p?.code ?? ''));
     const room = rooms.get(code);
     if (!room) return fail(ack, `No room called ${code || '...'}. Check the code?`);
@@ -307,6 +325,40 @@ io.on('connection', (socket: GameSocket) => {
     resumeTurn(room, seat); // the clock was waiting for them
     ack({ ok: true, code: room.code, seat, token: s.token, room: snapshot(room) });
     broadcast(room);
+  });
+
+  // Quick match: pair strangers into a first-to-5 duel. The first player waits; the next one completes the pair.
+  socket.on('quick:join', (p, ack) => {
+    const reply = typeof ack === 'function' ? ack : () => {};
+    if (rooms.size >= MAX_ROOMS) return reply({ ok: false, error: 'The server is busy right now. Try again in a minute.' });
+    const existing = currentRoom(socket);
+    if (existing) vacate(existing.room, existing.seat);
+    const name = cleanName(p?.name);
+    const skin = String(p?.skin ?? '');
+    const entry = { socketId: socket.id, name, skin, since: Date.now() };
+    const mate = queue.join(entry, socketAlive);
+    if (!mate) return reply({ ok: true, status: 'waiting' });
+    const mateSocket = io.sockets.sockets.get(mate.socketId);
+    if (!mateSocket) {
+      queue.join(entry, socketAlive);
+      return reply({ ok: true, status: 'waiting' });
+    }
+    const created = rooms.create(mate.name, mate.skin, QUICK_TARGET, mate.socketId, 'duel', true);
+    const joined = rooms.join(created.room, name, skin, socket.id);
+    if ('error' in joined) {
+      rooms.delete(created.room.code);
+      return reply({ ok: false, error: joined.error });
+    }
+    attach(mateSocket, created.room, 0);
+    attach(socket, created.room, joined.seat);
+    armTurnTimer(created.room, 4800);
+    const room = snapshot(created.room);
+    mateSocket.emit('quick:matched', { code: created.room.code, seat: 0, token: created.token, room });
+    reply({ ok: true, status: 'matched', code: created.room.code, seat: joined.seat, token: joined.token, room });
+  });
+
+  socket.on('quick:cancel', () => {
+    queue.cancel(socket.id);
   });
 
   socket.on('royale:start', (ack) => {
@@ -373,6 +425,7 @@ io.on('connection', (socket: GameSocket) => {
     const reply = typeof ack === 'function' ? ack : () => {};
     const ctx = currentRoom(socket);
     if (!ctx) return reply({ ok: false, error: 'Not in a room.' });
+    if (ctx.room.quick) return reply({ ok: false, error: 'Messages are off in quick matches. Reactions still work!' });
     const text = cleanChat(raw);
     if (!text) return reply({ ok: false, error: 'Type a message first.' });
     if (!chatAllowed(socket)) return reply({ ok: false, error: 'Slow down a little…' });
@@ -391,6 +444,7 @@ io.on('connection', (socket: GameSocket) => {
 
   socket.on('disconnect', () => {
     clearInterval(lagTimer);
+    queue.cancel(socket.id);
     const ctx = currentRoom(socket);
     if (!ctx) return;
     const { room, seat } = ctx;
@@ -409,7 +463,23 @@ io.on('connection', (socket: GameSocket) => {
 });
 
 setInterval(() => rooms.sweep(), 5 * 60_000).unref();
+setInterval(() => queue.sweep(3 * 60_000, socketAlive), 30_000).unref();
 
 http.listen(PORT, () => {
   console.log(`Biro Soka server listening on http://localhost:${PORT} (turn limit ${TURN_MS / 1000}s)`);
+  if (KEEP_AWAKE && SELF_PING_URL) {
+    const target = `${SELF_PING_URL.replace(/\/$/, '')}/api/health`;
+    console.log(`Keep-awake on: asking for ${target} every ${SELF_PING_MS / 1000}s`);
+    const ping = async () => {
+      try {
+        const r = await fetch(target, { signal: AbortSignal.timeout(20_000) });
+        if (r.ok) selfPings++;
+      } catch (e) {
+        console.warn('keep-awake ping failed:', (e as Error).message);
+      }
+    };
+    setInterval(ping, SELF_PING_MS).unref();
+  } else if (KEEP_AWAKE) {
+    console.warn('KEEP_AWAKE is on but there is no address to ask for (set SELF_PING_URL or deploy on Render).');
+  }
 });

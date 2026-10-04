@@ -97,6 +97,14 @@ export function HowToOnline({ navigate }: { navigate: Navigate }) {
         ))}
       </ol>
 
+      <section className="royale-rules quick-rules">
+        <h2 className="hand">⚡ Quick match (no code needed)</h2>
+        <p>
+          Tap <b>Quick match</b> to be paired with another player who is looking for a game, first to 5. If nobody is around after 10 seconds you can play the
+          Computer instead, or keep waiting. Typed messages are switched off with strangers, but reactions still work.
+        </p>
+      </section>
+
       <section className="royale-rules">
         <h2 className="hand">⚔️ Battle Royale (2 to 4 players)</h2>
         <p>

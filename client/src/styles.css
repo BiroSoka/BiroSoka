@@ -497,3 +497,56 @@ input { font: inherit; -webkit-user-select: text; user-select: text; }
 .chat-feed { bottom: calc(var(--sab) + 80px); }
 
 .share-msg { margin: 0; text-align: center; }
+
+/* ---------- Quick match ---------- */
+.quick-card { display: grid; gap: 4px; text-align: center; }
+.quick-fallback { width: 100%; text-align: center; transform: none; }
+.quick-rules { background: #fff0c7; }
+
+/* ---------- Daily goals ---------- */
+.daily-card { display: grid; gap: 6px; padding: 10px 12px; border-radius: 6px; background: #fff2a8; box-shadow: 3px 4px 0 rgba(0, 0, 0, 0.14); text-align: left; transform: rotate(-0.4deg); }
+.daily-card header { display: flex; justify-content: space-between; align-items: baseline; }
+.daily-card .streak { font-size: 1.1rem; }
+.daily-count { font-weight: 800; opacity: 0.7; font-size: 0.85rem; }
+.daily-card ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.daily-card li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; }
+.daily-card .goal-text { font-weight: 700; font-size: 0.9rem; }
+.daily-card li.done .goal-text { opacity: 0.6; text-decoration: line-through; }
+.goal-bar { grid-column: 1; height: 7px; border-radius: 4px; background: rgba(29, 42, 92, 0.15); overflow: hidden; }
+.goal-bar i { display: block; height: 100%; background: var(--green); transition: width 0.4s; }
+.daily-card small { grid-row: 1 / span 2; grid-column: 2; font-weight: 800; opacity: 0.7; }
+.daily-card footer { font-size: 0.78rem; opacity: 0.7; }
+.goal-pop {
+  position: absolute; left: 50%; top: calc(var(--sat) + 112px); transform: translateX(-50%); z-index: 7; max-width: 92%; text-align: center;
+  padding: 7px 14px; border-radius: 999px; background: rgba(34, 160, 80, 0.95); color: #fff; font-weight: 800; font-size: 0.9rem;
+  pointer-events: none; animation: fadein 0.3s; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.streak-line { margin: 0; font-weight: 800; }
+.boss-beaten { margin: 0; font-weight: 800; padding: 8px 10px; border-radius: 10px; background: #e1f7e1; }
+.career-pill { margin-left: 8px; padding: 1px 9px; border-radius: 999px; background: rgba(29, 42, 92, 0.18); font-size: 0.8rem; }
+
+/* ---------- Career ladder ---------- */
+.boss-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.boss-card { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 10px; border-radius: 14px; background: #fff; box-shadow: 0 3px 0 rgba(0, 0, 0, 0.12); border: 2px solid transparent; }
+.boss-card.current { border-color: var(--blue); background: #eef3ff; }
+.boss-card.cleared { background: #f0faf0; }
+.boss-card.locked { opacity: 0.55; }
+.boss-emoji { font-size: 2rem; }
+.boss-text { display: grid; gap: 1px; line-height: 1.2; min-width: 0; }
+.boss-text small { opacity: 0.6; font-weight: 700; }
+.boss-card .btn { padding: 6px 14px; }
+.boss-prize { flex-wrap: wrap; }
+.boss-quirk { font-size: 0.88rem; opacity: 0.85; }
+.boss-prize { display: flex; align-items: center; gap: 4px; font-size: 0.8rem; font-weight: 700; opacity: 0.8; }
+
+/* ---------- Replay ---------- */
+.replay-btn {
+  position: absolute; right: calc(var(--sar) + 10px); top: calc(var(--sat) + 76px); z-index: 6; padding: 6px 12px; border-radius: 999px; border: 0;
+  background: rgba(20, 18, 26, 0.82); color: #fff; font-weight: 800; font-size: 0.85rem; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
+}
+.replay-btn:active { transform: scale(0.95); }
+.replay-tag {
+  position: absolute; left: 50%; top: calc(var(--sat) + 118px); transform: translateX(-50%); z-index: 6; padding: 5px 14px; border-radius: 999px;
+  background: rgba(255, 210, 63, 0.95); color: var(--ink); font-weight: 800; font-size: 0.85rem; letter-spacing: 0.04em; pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); animation: tick 1.4s ease-in-out infinite;
+}

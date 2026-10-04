@@ -1,0 +1,32 @@
+name: Idea or feature request
+description: Suggest something that would make the game better
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are welcome! Remember the game's promises: pens and desks are cosmetic only (no pay-to-win), there are
+        no accounts, and the way it feels to flick is protected.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve, or what would it make more fun?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What do you imagine?
+      description: Describe it in your own words. Sketches are great.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Other ways to do it? (optional)
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Would you like to build it?
+      options:
+        - label: Yes, I would like to work on this myself (please tell me how to start)

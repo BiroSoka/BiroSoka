@@ -11,7 +11,8 @@
     "dev": "concurrently -n server,client -c yellow,cyan \"npm:dev -w server\" \"npm:dev -w client\"",
     "build": "npm run build -w client",
     "start": "npm start -w server",
-    "typecheck": "tsc -p shared && tsc -p client --noEmit && tsc -p server --noEmit"
+    "typecheck": "tsc -p shared && tsc -p client --noEmit && tsc -p server --noEmit",
+    "test": "npm test -w shared && npm test -w server"
   },
   "devDependencies": {
     "concurrently": "^9.0.0",
@@ -19,5 +20,16 @@
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "description": "Biro Soka: the schoolyard pen-flicking game, for phones and browsers",
+  "license": "MIT",
+  "keywords": [
+    "game",
+    "physics",
+    "multiplayer",
+    "react",
+    "canvas",
+    "socket.io",
+    "typescript"
+  ]
 }

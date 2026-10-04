@@ -115,3 +115,8 @@ export const NETWORK = {
   /** How often the server checks each player's connection. */
   pingEveryMs: 3000,
 } as const;
+
+/** Quick match: strangers are paired into a first-to-5 duel. */
+export const QUICK_TARGET = 5;
+/** How long the app waits for another player before offering the Computer instead. */
+export const QUICK_WAIT_SECONDS = 10;

@@ -20,6 +20,8 @@ export interface RoomSnapshot {
   code: string;
   status: RoomStatus;
   mode: GameMode;
+  /** Paired by Quick match (strangers): free-text chat is switched off. */
+  quick: boolean;
   target: number;
   /** One entry per seat: 2 for a duel, 4 for Battle Royale (null = empty seat). */
   players: (PlayerInfo | null)[];
@@ -83,6 +85,16 @@ export type JoinResult =
 
 export type Ack = { ok: true } | { ok: false; error: string };
 
+/** What a player is told once Quick match has paired them with someone. */
+export interface QuickMatched {
+  code: string;
+  seat: number;
+  token: string;
+  room: RoomSnapshot;
+}
+
+export type QuickResult = { ok: true; status: 'waiting' } | ({ ok: true; status: 'matched' } & QuickMatched) | { ok: false; error: string };
+
 export const EMOTES = ['😂', '😤', '🔥', '😱', '👏', 'GG'] as const;
 export type Emote = (typeof EMOTES)[number];
 
@@ -93,6 +105,9 @@ export interface ClientToServerEvents {
   'room:leave': () => void;
   /** Battle Royale: the host starts (or restarts) the match once at least two players are in. */
   'royale:start': (ack: (r: Ack) => void) => void;
+  /** Quick match: join the queue. Answered at once with 'waiting', or 'matched' if someone was already waiting. */
+  'quick:join': (p: { name: string; skin: string }, ack: (r: QuickResult) => void) => void;
+  'quick:cancel': () => void;
   shot: (p: { shotNo: number; flick: Flick }, ack: (r: Ack) => void) => void;
   rematch: () => void;
   emote: (e: Emote) => void;
@@ -107,6 +122,8 @@ export interface ServerToClientEvents {
   'turn:skip': (msg: SkipMessage) => void;
   emote: (p: { seat: number; emote: Emote }) => void;
   chat: (p: { seat: number; text: string }) => void;
+  /** Quick match found you an opponent while you were waiting. */
+  'quick:matched': (r: QuickMatched) => void;
   /** Connection check: the client answers straight away. Lets the server measure delay and spot a dead line. */
   'lag:ping': (ack: () => void) => void;
 }

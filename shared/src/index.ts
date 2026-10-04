@@ -7,3 +7,6 @@ export * from './ai';
 export * from './skins';
 export * from './protocol';
 export * from './royale';
+export * from './progress';
+export * from './career';
+export * from './replay';

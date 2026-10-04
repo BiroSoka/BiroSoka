@@ -127,6 +127,12 @@ class OnlineClient {
     s.on('turn:skip', (m) => this.skipHandlers.forEach((h) => h(m)));
     s.on('emote', (p) => this.emoteHandlers.forEach((h) => h(p)));
     s.on('chat', (p) => this.chatHandlers.forEach((h) => h(p)));
+    // Quick match found someone while we were waiting.
+    s.on('quick:matched', (r) => {
+      this.session = { code: r.code, token: r.token, seat: r.seat };
+      writeSession(this.session);
+      this.set({ room: r.room, seat: r.seat, error: null });
+    });
     // The server checks now and then that we can still be reached; answer at once.
     s.on('lag:ping', (ack) => ack());
     s.connect();
@@ -227,6 +233,27 @@ class OnlineClient {
     return new Promise((resolve) => {
       s.timeout(ACK_TIMEOUT).emit('chat', text, (err, r) => resolve(err ? { ok: false, error: 'Message not sent' } : r));
     });
+  }
+
+  /** Quick match: join the waiting list. Resolves once the server has taken us in (or paired us at once). */
+  quickJoin(name: string, skin: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    const s = this.ensureSocket();
+    return new Promise((resolve) => {
+      s.timeout(ACK_TIMEOUT).emit('quick:join', { name, skin }, (err, r) => {
+        if (err) return resolve({ ok: false, error: "Can't reach the game server yet. Check your connection." });
+        if (!r.ok) return resolve(r);
+        if (r.status === 'matched') {
+          this.session = { code: r.code, token: r.token, seat: r.seat };
+          writeSession(this.session);
+          this.set({ room: r.room, seat: r.seat, error: null });
+        }
+        resolve({ ok: true });
+      });
+    });
+  }
+
+  quickCancel() {
+    this.socket?.emit('quick:cancel');
   }
 
   leave() {

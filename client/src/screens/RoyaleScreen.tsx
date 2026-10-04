@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { NETWORK, SKINS, cleanChat, distinctSkinList, getSkin, type Emote, type RoyaleState } from '@biro/shared';
+import { NETWORK, SKINS, cleanChat, distinctSkinList, getSkin, type DailyEvent, type Emote, type RoyaleState } from '@biro/shared';
 import type { Navigate } from '../App';
 import { ChatFeed, ReactionDock, type ChatLine } from '../components/ChatDock';
 import { PlayerAvatar } from '../components/PlayerAvatar';
 import { ShareButton } from '../components/ShareButton';
 import { TurnTimer } from '../components/TurnTimer';
 import { Button, Confetti, Modal, Toggle } from '../components/ui';
-import { getPrefs, isUnlocked, setPrefs, unlockedSkins, usePrefs } from '../lib/prefs';
+import { getPrefs, isUnlocked, recordDaily, setPrefs, unlockedSkins, usePrefs } from '../lib/prefs';
 import { RoyaleController, type RoyaleEvent, type RoyaleHud, type RoyalePhase } from '../game/royaleController';
 import { sfx } from '../lib/audio';
 import { music } from '../lib/music';
@@ -36,6 +36,8 @@ export function RoyaleScreen({ navigate }: { navigate: Navigate }) {
   const [paused, setPaused] = useState(false);
   const [confirmQuit, setConfirmQuit] = useState(false);
   const [chats, setChats] = useState<ChatLine[]>([]);
+  const [goalPop, setGoalPop] = useState<string | null>(null);
+  const [streakInfo, setStreakInfo] = useState<{ streak: number; changed: boolean } | null>(null);
   const [bubbles, setBubbles] = useState<{ id: number; seat: number; emote: Emote }[]>([]);
   const [unlocked, setUnlocked] = useState<string[]>([]);
   const [startState] = useState<RoyaleState | null>(() => online.getState().room?.royale ?? null);
@@ -78,6 +80,7 @@ export function RoyaleScreen({ navigate }: { navigate: Navigate }) {
       sendShot: (flick, shotNo) => online.shot(flick, shotNo),
     });
     ctrlRef.current = ctrl;
+    if (import.meta.env.DEV) (window as unknown as { __biro?: unknown }).__biro = { ctrl }; // dev only: lets tests read the game state
     setHud(ctrl.hud);
 
     const offShot = online.onRoyaleShot((m) => ctrl.receiveShot(m));
@@ -125,6 +128,19 @@ export function RoyaleScreen({ navigate }: { navigate: Navigate }) {
   const secondsLeft = useTurnClock(onlineSecondsLeft);
 
   // ---- toasts -------------------------------------------------------------
+  /** Count something towards today's goals and pop up a message for any goal it finishes. */
+  function noteDaily(ev: DailyEvent) {
+    const r = recordDaily(ev);
+    r.completed.forEach((g, i) => window.setTimeout(() => setGoalPop(`✅ Daily goal done: ${g.text}`), i * 3600));
+    return r;
+  }
+
+  useEffect(() => {
+    if (!goalPop) return;
+    const t = window.setTimeout(() => setGoalPop(null), 3400);
+    return () => window.clearTimeout(t);
+  }, [goalPop]);
+
   function showNotice(title: string, sub: string) {
     const id = Date.now() + Math.random();
     setToast({ id, title, sub, tone: 'neutral' });
@@ -162,6 +178,8 @@ export function RoyaleScreen({ navigate }: { navigate: Navigate }) {
   useEffect(() => {
     const ev = hud?.event;
     if (!ev) return;
+    const knockedOff = ev.shooter === mySeat ? ev.eliminated.filter((i) => i !== mySeat).length : 0;
+    if (knockedOff > 0) noteDaily({ type: 'knockout', spin: ev.spin >= 0.35, count: knockedOff });
     const t = describeEvent(ev, mySeat, namesRef.current);
     if (!t) return;
     setToast(t);
@@ -187,6 +205,8 @@ export function RoyaleScreen({ navigate }: { navigate: Navigate }) {
       else s.onlineLosses++;
       return { stats: s };
     });
+    const daily = noteDaily({ type: 'game', won: iWon, ai: false });
+    setStreakInfo({ streak: daily.streak, changed: daily.streakChanged });
     const after = SKINS.filter((s) => isUnlocked(s, getPrefs().stats)).map((s) => s.id);
     setUnlocked(after.filter((id) => !before.includes(id)));
   }, [over, state, iWon]);
@@ -258,6 +278,15 @@ export function RoyaleScreen({ navigate }: { navigate: Navigate }) {
         <TurnTimer seconds={secondsLeft} mine={state.turn === mySeat && state.alive[mySeat]} name={state.turn === mySeat ? undefined : shortName(names[state.turn])} />
       )}
 
+      {hud?.replayable && phase !== 'intro' && !paused && (
+        <button type="button" className="replay-btn" onClick={() => ctrlRef.current?.startReplay()} aria-label="Watch the last shot again">
+          ↺ Replay
+        </button>
+      )}
+      {hud?.replaying && <div className="replay-tag">▶ REPLAY · tap to skip</div>}
+
+      {goalPop && <div className="goal-pop">{goalPop}</div>}
+
       {toast && (
         <div key={toast.id} className={`toast toast-${toast.tone}`}>
           <strong className="marker">{toast.title}</strong>
@@ -321,7 +350,7 @@ export function RoyaleScreen({ navigate }: { navigate: Navigate }) {
         </Modal>
       )}
 
-      {over && state && !abandoned && (
+      {over && state && !abandoned && !hud?.replaying && (
         <Modal>
           {iWon && <Confetti />}
           <PlayerAvatar name={names[state.winner!]} skin={skins[state.winner!]} size={84} className="result-avatar" />
@@ -339,6 +368,11 @@ export function RoyaleScreen({ navigate }: { navigate: Navigate }) {
             <div className="unlock-banner">
               🎉 New pen unlocked: <b>{unlocked.map((id) => getSkin(id).name).join(', ')}</b>
             </div>
+          )}
+          {streakInfo && streakInfo.streak > 0 && (
+            <p className="streak-line">
+              🔥 {streakInfo.streak}-day streak{streakInfo.changed ? ' (+1 today!)' : ''}
+            </p>
           )}
           <div className="modal-actions">
             {iWon && (
@@ -360,6 +394,11 @@ export function RoyaleScreen({ navigate }: { navigate: Navigate }) {
               <p className="muted small">Waiting for the host to start another game…</p>
             )}
             {startError && <p className="error-msg">{startError}</p>}
+            {hud?.replayable && (
+              <Button variant="ghost" onClick={() => ctrlRef.current?.startReplay()}>
+                ↺ Watch the last shot
+              </Button>
+            )}
             <Button variant="ghost" onClick={quit}>
               Menu
             </Button>

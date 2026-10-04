@@ -20,6 +20,7 @@ import {
 import { sfx, vibrate } from '../lib/audio';
 import { easeOut, layoutInsets, pullFor, type ControllerPrefs } from './controller';
 import { grabInfo, Renderer, type AimVisual, type PenSprite } from './renderer';
+import { ReplayDriver } from './replayDriver';
 
 /**
  * Battle Royale table controller (2 to 4 players). Turn flow:
@@ -44,7 +45,13 @@ export interface RoyaleHud {
   state: RoyaleState;
   phase: RoyalePhase;
   event: RoyaleEvent | null;
+  /** The last shot can be watched again right now. */
+  replayable: boolean;
+  replaying: boolean;
 }
+
+/** Phases in which watching a replay cannot get in the way of the live game. */
+const REPLAY_PHASES: RoyalePhase[] = ['ready', 'waiting', 'over'];
 
 export interface RoyaleOptions {
   canvas: HTMLCanvasElement;
@@ -107,6 +114,7 @@ export class RoyaleController {
   private resizeObs: ResizeObserver;
   private destroyed = false;
   private held = false;
+  private replay = new ReplayDriver();
 
   constructor(opts: RoyaleOptions) {
     this.opts = opts;
@@ -162,7 +170,25 @@ export class RoyaleController {
   }
 
   get hud(): RoyaleHud {
-    return { state: this.state, phase: this.phase, event: this.event };
+    return {
+      state: this.state,
+      phase: this.phase,
+      event: this.event,
+      replayable: this.replay.has && !this.replay.playing && REPLAY_PHASES.includes(this.phase),
+      replaying: this.replay.playing,
+    };
+  }
+
+  /** Watch the last shot again. Only when nothing is moving; any real shot cancels it. */
+  startReplay() {
+    if (!REPLAY_PHASES.includes(this.phase) || this.drag) return;
+    if (this.replay.start()) this.emit();
+  }
+
+  stopReplay() {
+    if (!this.replay.playing) return;
+    this.replay.stop();
+    this.emit();
   }
 
   /** Ends the intro hold and lets the first turn begin. */
@@ -180,6 +206,7 @@ export class RoyaleController {
     this.queued = [];
     this.authority = null;
     this.pendingState = null;
+    this.replay.reset();
     this.state = state;
     this.event = null;
     this.display = [...state.pens];
@@ -306,6 +333,7 @@ export class RoyaleController {
   private startShot(shooter: number, flick: Flick, from: RoyaleState) {
     this.sim = new Sim(from.pens);
     this.sim.applyFlick(shooter, wobbleFlick(from.seed, from.shotNo, flick));
+    this.replay.record({ pens: from.pens, shooter, flick, seed: from.seed, shotNo: from.shotNo });
     this.simAcc = 0;
     const pose = from.pens[shooter];
     if (pose) {
@@ -330,6 +358,19 @@ export class RoyaleController {
         sfx.fall();
         this.renderer.fall(e.pose, e.vx, e.vy, e.w, getSkin(this.opts.skins[e.pen]));
         vibrate(this.opts.prefs.haptics, [20, 40, 30]);
+      }
+    }
+  }
+
+  /** Sounds and effects for a replay (no vibration, no scoring). */
+  private replayEffects(events: SimEvent[]) {
+    for (const e of events) {
+      if (e.type === 'hit') {
+        sfx.hit(e.strength);
+        this.renderer.hit(e.x, e.y, e.strength);
+      } else {
+        sfx.fall();
+        this.renderer.fall(e.pose, e.vx, e.vy, e.w, getSkin(this.opts.skins[e.pen]));
       }
     }
   }
@@ -427,6 +468,16 @@ export class RoyaleController {
       if (this.sim.settled()) this.onSettled();
     }
 
+    if (this.replay.playing) {
+      if (!REPLAY_PHASES.includes(this.phase)) {
+        this.replay.stop(); // the live game moved on (a real shot started)
+        this.emit();
+      } else {
+        this.replayEffects(this.replay.advance(dt));
+        if (!this.replay.playing) this.emit();
+      }
+    }
+
     for (const a of this.anims) {
       if (a.lift > 0) a.lift = Math.max(0, a.lift - dt / PLACE_TIME);
       if (a.alpha < 1) a.alpha = Math.min(1, a.alpha + dt / (PLACE_TIME * 0.5));
@@ -438,6 +489,14 @@ export class RoyaleController {
   };
 
   private sprites(): PenSprite[] {
+    const replayPoses = this.replay.poses();
+    if (replayPoses) {
+      return replayPoses.flatMap((pose, i) => {
+        if (!pose) return [];
+        const name = this.opts.names[i] ?? '';
+        return [{ pose, skin: getSkin(this.opts.skins[i]), lift: 0, alpha: 1, glow: null, label: i === this.opts.mySeat ? 'YOU' : name.length > 9 ? `${name.slice(0, 8)}…` : name }];
+      });
+    }
     const out: PenSprite[] = [];
     const turn = this.state.turn;
     this.display.forEach((pose, i) => {
@@ -471,6 +530,7 @@ export class RoyaleController {
   }
 
   private aimVisual(): AimVisual | null {
+    if (this.replay.playing) return null;
     if (this.phase !== 'aiming' || !this.drag) return null;
     const d = this.drag;
     const { pull, power } = pullFor(d.grab, d.pointer);
@@ -514,6 +574,10 @@ export class RoyaleController {
 
   private onDown = (e: PointerEvent) => {
     sfx.unlock();
+    if (this.replay.playing) {
+      this.stopReplay(); // a tap skips the replay
+      return;
+    }
     if (this.phase !== 'ready' || this.drag) return;
     const pose = this.state.pens[this.opts.mySeat];
     if (!pose) return;

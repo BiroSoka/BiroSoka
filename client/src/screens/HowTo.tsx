@@ -21,6 +21,12 @@ export function HowTo({ navigate }: { navigate: Navigate }) {
           <b>15 seconds a turn.</b> You have 15 seconds to flick. Run out of time and your turn passes to your opponent. In Battle Royale it moves to the next player.
         </li>
         <li>
+          <b>Daily goals and streaks.</b> Every day has three new goals on the home screen. Finish a game on consecutive days to build a streak, which unlocks pens at 3 and 7 days.
+        </li>
+        <li>
+          <b>Career.</b> Beat six named opponents in order, each with a quirk, and win a pen from every one.
+        </li>
+        <li>
           <b>Score.</b> Knock their pen off the desk and stay on it: <b>+1</b>. Fall off yourself and your opponent gets <b>+1</b>. Both fall: nothing.
         </li>
         <li>

@@ -1,4 +1,4 @@
-import { planAiShot, type Difficulty, type Flick, type MatchState, type Seat } from '@biro/shared';
+import { planAiShot, type Difficulty, type DifficultyProfile, type Flick, type MatchState, type Seat } from '@biro/shared';
 
 let worker: Worker | null = null;
 let nextId = 1;
@@ -18,13 +18,14 @@ function getWorker(): Worker | null {
   }
 }
 
-export function requestAiShot(match: MatchState, seat: Seat, difficulty: Difficulty): Promise<Flick> {
+/** `profile` overrides the level's settings (Career opponents have their own quirks). */
+export function requestAiShot(match: MatchState, seat: Seat, difficulty: Difficulty, profile?: DifficultyProfile): Promise<Flick> {
   const seed = (Math.random() * 0xffffffff) >>> 0;
   const w = getWorker();
-  if (!w) return Promise.resolve(planAiShot(match, seat, difficulty, seed));
+  if (!w) return Promise.resolve(planAiShot(match, seat, difficulty, seed, profile));
   const id = nextId++;
   return new Promise((resolve) => {
     pending.set(id, resolve);
-    w.postMessage({ id, match, seat, difficulty, seed });
+    w.postMessage({ id, match, seat, difficulty, seed, profile });
   });
 }

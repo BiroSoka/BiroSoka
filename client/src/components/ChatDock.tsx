@@ -10,7 +10,7 @@ export interface ChatLine {
 }
 
 /** The smiley button: opens a small panel with quick reactions and a box for a short typed message. */
-export function ReactionDock({ onEmote, onSend }: { onEmote: (e: Emote) => void; onSend: (text: string) => Promise<string | null> }) {
+export function ReactionDock({ onEmote, onSend, textEnabled = true }: { onEmote: (e: Emote) => void; onSend: (text: string) => Promise<string | null>; textEnabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +63,7 @@ export function ReactionDock({ onEmote, onSend }: { onEmote: (e: Emote) => void;
               </button>
             ))}
           </div>
+          {textEnabled && (
           <form className="chat-form" onSubmit={submit}>
             <input
               value={text}
@@ -79,7 +80,8 @@ export function ReactionDock({ onEmote, onSend }: { onEmote: (e: Emote) => void;
               Send
             </button>
           </form>
-          <small className={`chat-hint ${error ? 'bad' : ''}`}>{error ?? `${clean.length}/${CHAT_MAX} · only the other players see it`}</small>
+          )}
+          <small className={`chat-hint ${error ? 'bad' : ''}`}>{!textEnabled ? 'Messages are off in quick matches. Reactions still work!' : (error ?? `${clean.length}/${CHAT_MAX} · only the other players see it`)}</small>
         </div>
       )}
     </div>

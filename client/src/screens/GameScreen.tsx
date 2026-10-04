@@ -3,10 +3,13 @@ import {
   SKINS,
   cleanChat,
   distinctSkins,
+  getBoss,
   getSkin,
   newMatch,
+  nextBoss,
   other,
   randomSeed,
+  type DailyEvent,
   type Difficulty,
   type Emote,
   type MatchState,
@@ -26,13 +29,15 @@ import { useAudioState } from '../lib/useAudio';
 import { onlineSecondsLeft, useTurnClock } from '../lib/turnClock';
 import { TurnTimer } from '../components/TurnTimer';
 import { online, useOnline } from '../lib/online';
-import { displayName, getPrefs, isUnlocked, setPrefs, unlockedSkins, usePrefs } from '../lib/prefs';
+import { displayName, getPrefs, isUnlocked, recordDaily, setPrefs, unlockedSkins, usePrefs } from '../lib/prefs';
 import { AI_OPPONENTS } from './AiSetup';
 
 interface Props {
   mode: 'ai' | 'online';
   difficulty: Difficulty;
   target: number;
+  /** A Career opponent (id), when playing the Career ladder. */
+  career?: string;
   navigate: Navigate;
 }
 
@@ -45,10 +50,11 @@ interface Toast {
   tone: 'good' | 'bad' | 'neutral';
 }
 
-export function GameScreen({ mode, difficulty, target, navigate }: Props) {
+export function GameScreen({ mode, difficulty, target, career, navigate }: Props) {
   const prefs = usePrefs();
   const net = useOnline();
   const audioState = useAudioState();
+  const boss = getBoss(career);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctrlRef = useRef<GameController | null>(null);
   const [hud, setHud] = useState<HudState | null>(null);
@@ -56,6 +62,8 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
   const [paused, setPaused] = useState(false);
   const [confirmQuit, setConfirmQuit] = useState(false);
   const [chats, setChats] = useState<ChatLine[]>([]);
+  const [goalPop, setGoalPop] = useState<string | null>(null);
+  const [streakInfo, setStreakInfo] = useState<{ streak: number; changed: boolean } | null>(null);
   const [bubbles, setBubbles] = useState<{ id: number; seat: Seat; emote: Emote }[]>([]);
   const [unlocked, setUnlocked] = useState<string[]>([]);
   // The opening match is fixed up front so the coin toss can show who starts. Only the very
@@ -79,13 +87,13 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
 
   const rawSkins: [string, string] =
     mode === 'ai'
-      ? [prefs.skin, aiSkin]
+      ? [prefs.skin, boss?.skin ?? aiSkin]
       : [net.room?.players[0]?.skin ?? 'blue', net.room?.players[1]?.skin ?? 'red'];
   const skins = distinctSkins(rawSkins[0], rawSkins[1]);
 
   const names: [string, string] =
     mode === 'ai'
-      ? [displayName(prefs), AI_OPPONENTS[difficulty].name]
+      ? [displayName(prefs), boss?.name ?? AI_OPPONENTS[difficulty].name]
       : [net.room?.players[0]?.name ?? 'Player 1', net.room?.players[1]?.name ?? 'Player 2'];
   const myName = mode === 'online' ? 'You' : names[mySeat];
   const oppName = names[oppSeat];
@@ -105,14 +113,16 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
       mySeat,
       skins,
       difficulty,
+      aiProfile: boss?.profile,
       match: start,
       startHeld: start.shotNo === 0,
-      prefs: { guide: p.guide, haptics: p.haptics, theme: p.table },
+      prefs: { guide: p.guide, haptics: p.haptics, theme: boss?.table ?? p.table },
       onHud: setHud,
       sendShot: mode === 'online' ? (flick, shotNo) => online.shot(flick, shotNo) : undefined,
       onNotice: (text) => showNotice("TIME'S UP!", text),
     });
     ctrlRef.current = ctrl;
+    if (import.meta.env.DEV) (window as unknown as { __biro?: unknown }).__biro = { ctrl }; // dev only: lets tests read the game state
     setHud(ctrl.state);
 
     const offShot = online.onShot((m) => ctrl.receiveShot(m));
@@ -136,7 +146,8 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
   }, []);
 
   useEffect(() => {
-    ctrlRef.current?.setPrefs({ guide: prefs.guide, haptics: prefs.haptics, theme: prefs.table });
+    ctrlRef.current?.setPrefs({ guide: prefs.guide, haptics: prefs.haptics, theme: boss?.table ?? prefs.table });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefs.guide, prefs.haptics, prefs.table]);
 
   // The pause menu freezes the turn clock (vs Computer; an online game cannot pause).
@@ -167,6 +178,7 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
   useEffect(() => {
     const s = hud?.lastShot;
     if (!s) return;
+    if (s.outcome === 'knockout' && s.shooter === mySeat) noteDaily({ type: 'knockout', spin: s.spin >= 0.35 });
     const t = describeShot(s, mySeat, mode === 'online' ? oppName : oppName);
     if (!t) return;
     setToast(t);
@@ -174,6 +186,19 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastShotId]);
+
+  /** Count something towards today's goals and pop up a message for any goal it finishes. */
+  function noteDaily(ev: DailyEvent) {
+    const r = recordDaily(ev);
+    r.completed.forEach((g, i) => window.setTimeout(() => setGoalPop(`✅ Daily goal done: ${g.text}`), i * 3600));
+    return r;
+  }
+
+  useEffect(() => {
+    if (!goalPop) return;
+    const t = window.setTimeout(() => setGoalPop(null), 3400);
+    return () => window.clearTimeout(t);
+  }, [goalPop]);
 
   function showNotice(title: string, sub: string) {
     const id = Date.now() + Math.random();
@@ -224,12 +249,16 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
         if (iWon) s.aiWins++;
         else s.aiLosses++;
         if (iWon && difficulty === 'hard') s.beatHard = true;
+        if (iWon && career && !s.careerCleared.includes(career)) s.careerCleared = [...s.careerCleared, career];
       } else if (iWon) s.onlineWins++;
       else s.onlineLosses++;
       return { stats: s };
     });
+    const daily = noteDaily({ type: 'game', won: iWon, ai: mode === 'ai' });
+    setStreakInfo({ streak: daily.streak, changed: daily.streakChanged });
     const after = SKINS.filter((s) => isUnlocked(s, getPrefs().stats)).map((s) => s.id);
     setUnlocked(after.filter((id) => !before.includes(id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [over, match, iWon, mode, difficulty]);
 
   function rematch() {
@@ -266,7 +295,7 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
       online.leave();
       navigate({ name: 'online' });
     } else {
-      navigate({ name: 'home' });
+      navigate(career ? { name: 'career' } : { name: 'home' });
     }
   }
 
@@ -277,6 +306,7 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
   const abandoned = mode === 'online' && net.room?.status === 'abandoned';
   const rematchMine = mode === 'online' && net.room?.rematch[mySeat];
   const rematchTheirs = mode === 'online' && net.room?.rematch[oppSeat];
+  const nextCareer = boss ? nextBoss(prefs.stats.careerCleared) : null;
   const showCoach = mode === 'ai' && !prefs.seenTutorial && phase === 'ready' && (match?.shotNo ?? 0) === 0;
 
   return (
@@ -330,6 +360,15 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
         <TurnTimer seconds={secondsLeft} mine={hud.match.turn === mySeat} />
       )}
 
+      {hud?.replayable && !tossing && !paused && (
+        <button type="button" className="replay-btn" onClick={() => ctrlRef.current?.startReplay()} aria-label="Watch the last shot again">
+          ↺ Replay
+        </button>
+      )}
+      {hud?.replaying && <div className="replay-tag">▶ REPLAY · tap to skip</div>}
+
+      {goalPop && <div className="goal-pop">{goalPop}</div>}
+
       {toast && (
         <div key={toast.id} className={`toast toast-${toast.tone}`}>
           <strong className="marker">{toast.title}</strong>
@@ -348,6 +387,7 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
           onDone={() => {
             setTossing(false);
             ctrlRef.current?.release();
+            if (boss && (match?.shotNo ?? 0) === 0) showNotice(`${boss.emoji} ${boss.name}`, `“${boss.intro}”`);
           }}
         />
       )}
@@ -356,7 +396,7 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
 
       <footer className="hint">
         <span>{hintFor(phase, match, mySeat, oppName)}</span>
-        {mode === 'online' && <ReactionDock onEmote={sendEmote} onSend={sendChat} />}
+        {mode === 'online' && <ReactionDock onEmote={sendEmote} onSend={sendChat} textEnabled={!net.room?.quick} />}
       </footer>
 
       {prefs.sound && audioState !== 'running' && <div className="sound-pill">🔈 Tap the screen to turn sound on</div>}
@@ -419,7 +459,7 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
         </Modal>
       )}
 
-      {over && match && !abandoned && (
+      {over && match && !abandoned && !hud?.replaying && (
         <Modal>
           {iWon && <Confetti />}
           <PlayerAvatar name={names[match.winner!]} skin={skins[match.winner!]} size={84} className="result-avatar" />
@@ -434,23 +474,43 @@ export function GameScreen({ mode, difficulty, target, navigate }: Props) {
               🎉 New pen unlocked: <b>{unlocked.map((id) => getSkin(id).name).join(', ')}</b>
             </div>
           )}
+          {boss && iWon && (
+            <p className="boss-beaten">
+              {boss.emoji} {boss.name} beaten! {nextCareer ? `Next up: ${nextCareer.name}` : 'You cleared the whole Career!'}
+            </p>
+          )}
+          {streakInfo && streakInfo.streak > 0 && (
+            <p className="streak-line">
+              🔥 {streakInfo.streak}-day streak{streakInfo.changed ? ' (+1 today!)' : ''}
+            </p>
+          )}
           <div className="modal-actions">
             {iWon && (
               <ShareButton
                 name={names[mySeat]}
                 headline={`I beat ${oppName}!`}
                 score={`${match.scores[mySeat]} – ${match.scores[oppSeat]}`}
-                detail={mode === 'ai' ? `vs Computer · ${difficulty[0].toUpperCase()}${difficulty.slice(1)} · first to ${match.target}` : `Online 1v1 · first to ${match.target}`}
+                detail={boss ? `Career · ${boss.name} · first to ${match.target}` : mode === 'ai' ? `vs Computer · ${difficulty[0].toUpperCase()}${difficulty.slice(1)} · first to ${match.target}` : `Online 1v1 · first to ${match.target}`}
                 skinId={skins[mySeat]}
                 table={prefs.table}
                 text={`I just beat ${oppName} ${match.scores[mySeat]}–${match.scores[oppSeat]} at Biro Soka! Think you can flick better?`}
               />
             )}
+            {boss && iWon && nextCareer && (
+              <Button variant="green" onClick={() => navigate({ name: 'game-ai', difficulty: nextCareer.level, target: nextCareer.target, career: nextCareer.id })}>
+                ▶ Next: {nextCareer.emoji} {nextCareer.name}
+              </Button>
+            )}
             <Button variant="blue" onClick={rematch} disabled={!!rematchMine}>
               {rematchMine ? 'Waiting for opponent…' : rematchTheirs ? 'Accept rematch' : 'Rematch'}
             </Button>
+            {hud?.replayable && (
+              <Button variant="ghost" onClick={() => ctrlRef.current?.startReplay()}>
+                ↺ Watch the last shot
+              </Button>
+            )}
             <Button variant="ghost" onClick={quit}>
-              Menu
+              {boss ? 'Career ladder' : 'Menu'}
             </Button>
           </div>
         </Modal>

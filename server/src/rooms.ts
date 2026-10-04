@@ -60,6 +60,8 @@ export interface Room {
   turnHold: { seat: number; msLeft: number; since: number } | null;
   /** How much more pausing this turn may use (refilled at the start of every turn). */
   holdLeftMs: number;
+  /** Paired by Quick match (strangers): free-text chat is off. */
+  quick: boolean;
 }
 
 /** How long a disconnected player has to come back before they are dropped from the game. */
@@ -92,7 +94,7 @@ export class RoomStore {
     throw new Error('Could not allocate a room code');
   }
 
-  create(name: string, skin: string, target: number, socketId: string, mode: GameMode = 'duel'): { room: Room; token: string } {
+  create(name: string, skin: string, target: number, socketId: string, mode: GameMode = 'duel', quick = false): { room: Room; token: string } {
     const token = randomBytes(16).toString('hex');
     const royale = mode === 'royale';
     const targets: readonly number[] = royale ? ROYALE.targets : TARGET_SCORES;
@@ -112,6 +114,7 @@ export class RoomStore {
       turnTimer: null,
       turnHold: null,
       holdLeftMs: 0,
+      quick,
     };
     this.rooms.set(room.code, room);
     return { room, token };
@@ -290,6 +293,7 @@ export function snapshot(room: Room): RoomSnapshot {
     code: room.code,
     status: room.status,
     mode: room.mode,
+    quick: room.quick,
     target: room.target,
     players: room.seats.map(info),
     match: room.match,

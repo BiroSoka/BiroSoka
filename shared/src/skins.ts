@@ -7,7 +7,11 @@ export type BarrelKind = 'clear' | 'solid' | 'metal';
 export type SkinUnlock =
   | { type: 'free' }
   | { type: 'wins'; count: number }
-  | { type: 'beat'; difficulty: 'hard' };
+  | { type: 'beat'; difficulty: 'hard' }
+  /** Won by beating a Career opponent. */
+  | { type: 'career'; boss: string }
+  /** Won by playing on this many days in a row. */
+  | { type: 'streak'; days: number };
 
 export interface PenSkin {
   id: string;
@@ -31,6 +35,16 @@ export const SKINS: PenSkin[] = [
   { id: 'neon', name: 'Neon Pink', barrel: 'solid', barrelColor: '#ff3ea5', capColor: '#161616', inkColor: '#ff3ea5', accent: '#ffa3d4', unlock: { type: 'wins', count: 5 } },
   { id: 'chrome', name: 'Chrome', barrel: 'metal', barrelColor: '#c9ced6', capColor: '#23262d', inkColor: '#111216', accent: '#ffffff', unlock: { type: 'wins', count: 10 } },
   { id: 'gold', name: 'Gold Nib', barrel: 'metal', barrelColor: '#e2b64a', capColor: '#3a2a0a', inkColor: '#111216', accent: '#fff1b8', unlock: { type: 'beat', difficulty: 'hard' } },
+  // Career pens: one for each opponent you beat.
+  { id: 'mint', name: 'Mint', barrel: 'solid', barrelColor: '#5ee6b0', capColor: '#14463a', inkColor: '#5ee6b0', accent: '#c9ffe9', unlock: { type: 'career', boss: 'new-kid' } },
+  { id: 'tangerine', name: 'Tangerine', barrel: 'solid', barrelColor: '#ff8a1f', capColor: '#3a1c00', inkColor: '#ff8a1f', accent: '#ffd2a0', unlock: { type: 'career', boss: 'class-rep' } },
+  { id: 'grape', name: 'Grape', barrel: 'solid', barrelColor: '#8a4dff', capColor: '#1e0f40', inkColor: '#8a4dff', accent: '#d6c2ff', unlock: { type: 'career', boss: 'spin-doctor' } },
+  { id: 'rosegold', name: 'Rose Gold', barrel: 'metal', barrelColor: '#e8a79a', capColor: '#4a2a24', inkColor: '#111216', accent: '#fff0ea', unlock: { type: 'career', boss: 'big-hitter' } },
+  { id: 'obsidian', name: 'Obsidian', barrel: 'metal', barrelColor: '#3a3f4a', capColor: '#0d0e12', inkColor: '#111216', accent: '#9aa4b8', unlock: { type: 'career', boss: 'head-prefect' } },
+  { id: 'emerald', name: 'Emerald Champ', barrel: 'metal', barrelColor: '#2fbf86', capColor: '#06281d', inkColor: '#111216', accent: '#bdf7de', unlock: { type: 'career', boss: 'desk-champ' } },
+  // Streak pens.
+  { id: 'lime', name: 'Lime Streak', barrel: 'solid', barrelColor: '#9be22a', capColor: '#243d00', inkColor: '#9be22a', accent: '#e6ffa8', unlock: { type: 'streak', days: 3 } },
+  { id: 'galaxy', name: 'Galaxy', barrel: 'metal', barrelColor: '#5b4bd6', capColor: '#120e33', inkColor: '#111216', accent: '#c9c2ff', unlock: { type: 'streak', days: 7 } },
 ];
 
 export const DEFAULT_SKIN = 'blue';

@@ -47,10 +47,33 @@ export function OnlineMenu({ navigate, initialCode }: { navigate: Navigate; init
     } else setError(r.error);
   }
 
+  function quick() {
+    if (needName) return setError('Pop your name in first.');
+    setError(null);
+    navigate({ name: 'quickmatch' });
+  }
+
   const targets: readonly number[] = mode === 'royale' ? ROYALE.targets : TARGET_SCORES;
   const shownTarget = targets.includes(prefs.target) ? prefs.target : mode === 'royale' ? ROYALE.defaultTarget : prefs.target;
 
-  const status = net.connection === 'online' ? 'Connected' : net.connection === 'idle' ? '' : 'Connecting to server…';
+  // A sleeping free host can take up to a minute to answer: say so instead of leaving people guessing.
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (net.connection === 'online') {
+      setSlow(false);
+      return;
+    }
+    const t = window.setTimeout(() => setSlow(true), 4000);
+    return () => window.clearTimeout(t);
+  }, [net.connection]);
+  const status =
+    net.connection === 'online'
+      ? 'Connected'
+      : net.connection === 'idle'
+        ? ''
+        : slow
+          ? 'Still connecting. The server may be waking up, which can take up to a minute…'
+          : 'Connecting to server…';
 
   return (
     <PaperScreen title="Play a Friend" onBack={() => navigate({ name: 'home' })}>
@@ -75,6 +98,15 @@ export function OnlineMenu({ navigate, initialCode }: { navigate: Navigate; init
           onChange={(e) => setPrefs({ name: e.target.value })}
         />
       </section>
+
+      <section className="quick-card">
+        <Button variant="green" size="lg" onClick={quick} disabled={busy !== null}>
+          ⚡ Quick match
+        </Button>
+        <p className="muted small">Play someone online right now. No code needed.</p>
+      </section>
+
+      <div className="or hand">or play a friend</div>
 
       <section className="sticky-card">
         <h2 className="marker">Join a game</h2>

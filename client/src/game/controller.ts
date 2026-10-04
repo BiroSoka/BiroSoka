@@ -16,6 +16,7 @@ import {
   Sim,
   type Ack,
   type Difficulty,
+  type DifficultyProfile,
   type Flick,
   type MatchState,
   type Outcome,
@@ -28,6 +29,7 @@ import {
 } from '@biro/shared';
 import { sfx, vibrate } from '../lib/audio';
 import { requestAiShot } from './aiClient';
+import { ReplayDriver } from './replayDriver';
 import { grabInfo, Renderer, type AimVisual, type PenSprite } from './renderer';
 import type { Insets } from './view';
 
@@ -53,7 +55,14 @@ export interface HudState {
   match: MatchState;
   phase: Phase;
   lastShot: LastShot | null;
+  /** The last shot can be watched again right now. */
+  replayable: boolean;
+  /** A replay is playing (the live game is paused on screen, not stopped). */
+  replaying: boolean;
 }
+
+/** Phases in which watching a replay cannot get in the way of the live game. */
+const REPLAY_PHASES: Phase[] = ['ready', 'waiting', 'thinking', 'over'];
 
 export interface ControllerPrefs {
   guide: 'short' | 'long';
@@ -67,6 +76,8 @@ export interface ControllerOptions {
   mySeat: Seat;
   skins: [string, string];
   difficulty: Difficulty;
+  /** Career opponents: their own settings instead of the level's. */
+  aiProfile?: DifficultyProfile;
   match: MatchState;
   /** Hold the first turn (coin toss on screen) until release() is called. */
   startHeld?: boolean;
@@ -144,6 +155,7 @@ export class GameController {
   private resizeObs: ResizeObserver;
   private destroyed = false;
   private held = false;
+  private replay = new ReplayDriver();
   /** vs Computer: seconds the human has used on the current turn (online, the server keeps the clock). */
   private turnElapsed = 0;
   private paused = false;
@@ -211,6 +223,7 @@ export class GameController {
     this.drag = null;
     this.aiAim = null;
     this.aiPlan = null;
+    this.replay.reset();
     this.queued = [];
     this.authority = null;
     this.match = match;
@@ -248,7 +261,25 @@ export class GameController {
   }
 
   get state(): HudState {
-    return { match: this.match, phase: this.phase, lastShot: this.lastShot };
+    return {
+      match: this.match,
+      phase: this.phase,
+      lastShot: this.lastShot,
+      replayable: this.replay.has && !this.replay.playing && REPLAY_PHASES.includes(this.phase),
+      replaying: this.replay.playing,
+    };
+  }
+
+  /** Watch the last shot again. Only when nothing is moving; any real shot cancels it. */
+  startReplay() {
+    if (!REPLAY_PHASES.includes(this.phase) || this.drag) return;
+    if (this.replay.start()) this.emit();
+  }
+
+  stopReplay() {
+    if (!this.replay.playing) return;
+    this.replay.stop();
+    this.emit();
   }
 
   /** Freeze the turn clock while the pause menu is open (vs Computer only; online games cannot pause). */
@@ -345,7 +376,7 @@ export class GameController {
     this.aiPlan = null;
     const started = pre?.started ?? performance.now();
     const minThink = 400 + Math.random() * 400;
-    void (pre?.promise ?? requestAiShot(this.match, seat, this.opts.difficulty)).then((flick) => {
+    void (pre?.promise ?? requestAiShot(this.match, seat, this.opts.difficulty, this.opts.aiProfile)).then((flick) => {
       if (epoch !== this.epoch || this.destroyed) return;
       const wait = Math.max(0, minThink - (performance.now() - started));
       this.later(wait, () => {
@@ -371,7 +402,7 @@ export class GameController {
       shotNo: next.shotNo,
       seed: next.seed,
       started: performance.now(),
-      promise: requestAiShot(next, next.turn, this.opts.difficulty),
+      promise: requestAiShot(next, next.turn, this.opts.difficulty, this.opts.aiProfile),
     };
   }
 
@@ -416,6 +447,7 @@ export class GameController {
   private startShot(shooter: Seat, flick: Flick, pens: readonly Pose[], seed: number, shotNo: number, round: number) {
     this.sim = new Sim(pens);
     this.sim.applyFlick(shooter, wobbleFlick(seed, shotNo, flick));
+    this.replay.record({ pens, shooter, flick, seed, shotNo });
     this.simAcc = 0;
     this.shooter = shooter;
     this.flick = flick;
@@ -444,6 +476,19 @@ export class GameController {
         sfx.fall();
         this.renderer.fall(e.pose, e.vx, e.vy, e.w, getSkin(this.opts.skins[e.pen]));
         vibrate(this.opts.prefs.haptics, [20, 40, 30]);
+      }
+    }
+  }
+
+  /** Sounds and effects for a replay (no vibration, no scoring). */
+  private replayEffects(events: SimEvent[]) {
+    for (const e of events) {
+      if (e.type === 'hit') {
+        sfx.hit(e.strength);
+        this.renderer.hit(e.x, e.y, e.strength);
+      } else {
+        sfx.fall();
+        this.renderer.fall(e.pose, e.vx, e.vy, e.w, getSkin(this.opts.skins[e.pen]));
       }
     }
   }
@@ -553,7 +598,17 @@ export class GameController {
       if (this.sim.settled()) this.onSettled();
     }
 
-    if (this.opts.mode === 'ai' && !this.paused && (this.phase === 'ready' || this.phase === 'aiming')) {
+    if (this.replay.playing) {
+      if (!REPLAY_PHASES.includes(this.phase)) {
+        this.replay.stop(); // the live game moved on (a real shot started)
+        this.emit();
+      } else {
+        this.replayEffects(this.replay.advance(dt));
+        if (!this.replay.playing) this.emit();
+      }
+    }
+
+    if (this.opts.mode === 'ai' && !this.paused && !this.replay.playing && (this.phase === 'ready' || this.phase === 'aiming')) {
       this.turnElapsed += dt;
       if (this.turnElapsed >= TURN.seconds) this.forfeitTurn();
     }
@@ -574,6 +629,10 @@ export class GameController {
   };
 
   private sprites(): PenSprite[] {
+    const replayPoses = this.replay.poses();
+    if (replayPoses) {
+      return replayPoses.flatMap((pose, i) => (pose ? [{ pose, skin: getSkin(this.opts.skins[i]), lift: 0, alpha: 1, glow: null }] : []));
+    }
     const out: PenSprite[] = [];
     const turn = this.match.turn;
     this.display.forEach((pose, i) => {
@@ -599,6 +658,7 @@ export class GameController {
   }
 
   private aimVisual(): AimVisual | null {
+    if (this.replay.playing) return null;
     if (this.phase === 'aiming' && this.drag) {
       const d = this.drag;
       const { pull, power } = pullFor(d.grab, d.pointer);
@@ -656,6 +716,10 @@ export class GameController {
 
   private onDown = (e: PointerEvent) => {
     sfx.unlock();
+    if (this.replay.playing) {
+      this.stopReplay(); // a tap skips the replay
+      return;
+    }
     if (this.phase !== 'ready' || this.drag) return;
     const pose = this.match.pens[this.opts.mySeat];
     const w = this.toWorld(e);

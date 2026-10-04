@@ -8,6 +8,8 @@ import { AiSetup } from './screens/AiSetup';
 import { OnlineMenu } from './screens/OnlineMenu';
 import { Lobby } from './screens/Lobby';
 import { GameScreen } from './screens/GameScreen';
+import { Career } from './screens/Career';
+import { QuickMatch } from './screens/QuickMatch';
 import { RoyaleScreen } from './screens/RoyaleScreen';
 import { PensScreen } from './screens/PensScreen';
 import { HowTo } from './screens/HowTo';
@@ -19,9 +21,11 @@ export type Route =
   | { name: 'ai-setup' }
   | { name: 'online'; code?: string }
   | { name: 'lobby' }
-  | { name: 'game-ai'; difficulty: Difficulty; target: number }
+  | { name: 'game-ai'; difficulty: Difficulty; target: number; career?: string }
+  | { name: 'career' }
   | { name: 'game-online' }
   | { name: 'game-royale' }
+  | { name: 'quickmatch' }
   | { name: 'pens' }
   | { name: 'howto' }
   | { name: 'howto-online' }
@@ -32,11 +36,8 @@ export type Navigate = (r: Route) => void;
 function initialRoute(): Route {
   const params = new URLSearchParams(window.location.search);
   const code = normalizeCode(params.get('room') ?? '');
-  if (code) {
-    window.history.replaceState(null, '', window.location.pathname);
-    return { name: 'online', code };
-  }
-  return { name: 'home' };
+  // Keep this free of side effects: React may call it twice in development.
+  return code ? { name: 'online', code } : { name: 'home' };
 }
 
 /** The table screen for a running online game. */
@@ -48,6 +49,11 @@ export default function App() {
   const [route, setRoute] = useState<Route>(initialRoute);
   const prefs = usePrefs();
   const net = useOnline();
+
+  // Tidy the invite link (?room=CODE) out of the address bar once it has been read.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has('room')) window.history.replaceState(null, '', window.location.pathname);
+  }, []);
 
   useEffect(() => {
     sfx.enabled = prefs.sound;
@@ -65,7 +71,7 @@ export default function App() {
 
   // Host is in the lobby and a friend joined: go to the table.
   useEffect(() => {
-    if (route.name === 'lobby' && net.room?.status === 'playing') setRoute(gameRoute(net.room.mode));
+    if ((route.name === 'lobby' || route.name === 'quickmatch') && net.room?.status === 'playing') setRoute(gameRoute(net.room.mode));
   }, [route.name, net.room?.status, net.room?.mode]);
 
   switch (route.name) {
@@ -78,11 +84,15 @@ export default function App() {
     case 'lobby':
       return <Lobby navigate={setRoute} />;
     case 'game-ai':
-      return <GameScreen key={`ai-${route.difficulty}-${route.target}`} mode="ai" difficulty={route.difficulty} target={route.target} navigate={setRoute} />;
+      return <GameScreen key={`ai-${route.difficulty}-${route.target}-${route.career ?? ''}`} mode="ai" difficulty={route.difficulty} target={route.target} career={route.career} navigate={setRoute} />;
     case 'game-online':
       return <GameScreen key="online" mode="online" difficulty="medium" target={net.room?.target ?? 5} navigate={setRoute} />;
     case 'game-royale':
       return <RoyaleScreen key="royale" navigate={setRoute} />;
+    case 'quickmatch':
+      return <QuickMatch navigate={setRoute} />;
+    case 'career':
+      return <Career navigate={setRoute} />;
     case 'pens':
       return <PensScreen navigate={setRoute} />;
     case 'howto-online':

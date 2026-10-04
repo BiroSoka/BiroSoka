@@ -1,0 +1,53 @@
+name: Bug report
+description: Something is broken or does not behave the way it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping make Biro Soka better! Please do **not** report security problems here: see SECURITY.md.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Tell us what you saw and what you expected to see.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we make it happen again?
+      placeholder: |
+        1. Tap Play a Friend Online
+        2. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Which part of the game?
+      options:
+        - Play vs Computer
+        - Career
+        - Online with a friend (room code)
+        - Quick match
+        - Battle Royale
+        - Replay or Share
+        - Daily goals or streaks
+        - Menus or settings
+        - Sound or music
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone or computer, and browser
+      placeholder: iPhone 13, Safari 17 / Pixel 7, Chrome 126 / Windows laptop, Edge
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: A screenshot or a short screen recording helps a lot.

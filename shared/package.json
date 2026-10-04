@@ -7,5 +7,12 @@
   "types": "src/index.ts",
   "dependencies": {
     "planck": "^1.1.0"
+  },
+  "license": "MIT",
+  "scripts": {
+    "test": "tsx scripts/rules-check.ts && tsx scripts/royale-check.ts && tsx scripts/progress-check.ts && tsx scripts/replay-check.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
   }
 }

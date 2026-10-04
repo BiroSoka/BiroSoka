@@ -10,3 +10,5 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22
+      - key: KEEP_AWAKE   # the server asks for its own address every 10 minutes so it never falls asleep
+        value: "true"

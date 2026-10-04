@@ -1,0 +1,21 @@
+# Backup pinger: asks the live game for its health page every 10 minutes so a free host never falls asleep.
+# Needs one setting: Repository > Settings > Secrets and variables > Actions > Variables > New variable
+#   Name: PING_URL    Value: https://your-app.onrender.com      (no trailing slash)
+# Notes: GitHub may delay scheduled runs a little, and switches them off after 60 days without repo activity.
+# UptimeRobot (see DEPLOY.md) is the more reliable pinger; this is a free second line of defence.
+name: Keep the game awake
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    if: ${{ vars.PING_URL != '' }}
+    steps:
+      - name: Ask for the health page
+        run: curl --fail --silent --show-error --max-time 90 --retry 3 --retry-delay 15 "${{ vars.PING_URL }}/api/health"

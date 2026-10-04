@@ -22,6 +22,13 @@ export interface DifficultyProfile {
   caution: number;
   /** Hard stop for planning time, so slow phones don't stall the game. */
   budgetMs: number;
+  // Career opponents get a quirk. All optional: leave them out for the normal levels.
+  /** Never flicks softer than this (0..1). A "big hitter". */
+  powerMin?: number;
+  /** Never flicks harder than this (0..1). A cautious player. */
+  powerMax?: number;
+  /** How far from the middle of the pen it grips, as a fraction of half the pen (default 0.55). Wide = lots of spin. */
+  gripReach?: number;
 }
 
 export const DIFFICULTY: Record<Difficulty, DifficultyProfile> = {
@@ -52,6 +59,11 @@ function powerForDistance(dist: number) {
   return Math.sqrt(2 * PHYS.slideDecel * Math.max(dist, 0)) / PHYS.maxSpeed;
 }
 
+/** Keep a flick's power inside the opponent's quirk limits. */
+function shape(power: number, profile?: DifficultyProfile): number {
+  return clamp(power, profile?.powerMin ?? 0, profile?.powerMax ?? 1);
+}
+
 /** How good a finished shot is for `seat`. Higher is better. */
 function evaluate(result: ShotResult, seat: Seat): number {
   const { delta, oppDelta } = scoreShot(seat, result.out);
@@ -70,14 +82,14 @@ function evaluate(result: ShotResult, seat: Seat): number {
 }
 
 /** Random candidate flick for `seat`: mostly aimed at the other pen, some exploratory. */
-function sampleFlick(pens: readonly Pose[], seat: Seat, rand: () => number): Flick {
+function sampleFlick(pens: readonly Pose[], seat: Seat, rand: () => number, profile?: DifficultyProfile): Flick {
   const me = pens[seat];
   const opp = pens[other(seat)];
   const meAxis = axisOf(me);
   const oppAxis = axisOf(opp);
   const halfLen = PEN.length / 2;
 
-  const gx = (rand() * 2 - 1) * halfLen * 0.55;
+  const gx = (rand() * 2 - 1) * halfLen * (profile?.gripReach ?? 0.55);
   const grab = { x: me.x + meAxis.x * gx, y: me.y + meAxis.y * gx };
 
   if (rand() < 0.82) {
@@ -89,11 +101,11 @@ function sampleFlick(pens: readonly Pose[], seat: Seat, rand: () => number): Fli
     const dist = Math.hypot(dx, dy) || 1;
     const dir = rotate(dx / dist, dy / dist, gaussian(rand) * 0.035);
     const follow = 0.8 + rand() * 4.5;
-    return { gx, dx: dir.x, dy: dir.y, power: clamp(powerForDistance(dist + follow), 0.12, 1) };
+    return { gx, dx: dir.x, dy: dir.y, power: shape(clamp(powerForDistance(dist + follow), 0.12, 1), profile) };
   }
   // Exploratory shot, including safe repositioning.
   const t = rand() * Math.PI * 2;
-  return { gx, dx: Math.cos(t), dy: Math.sin(t), power: 0.1 + rand() * 0.6 };
+  return { gx, dx: Math.cos(t), dy: Math.sin(t), power: shape(0.1 + rand() * 0.6, profile) };
 }
 
 /** A small random variation of a good shot: nudged aim, power and grab point. */
@@ -144,7 +156,7 @@ export function planAiShot(
     candidates.push({ flick, value: evaluate(result, seat), result });
   };
 
-  for (let i = 0; i < profile.samples && (i < 24 || timeLeft()); i++) consider(sampleFlick(match.pens, seat, rand));
+  for (let i = 0; i < profile.samples && (i < 24 || timeLeft()); i++) consider(sampleFlick(match.pens, seat, rand, profile));
 
   candidates.sort((a, b) => b.value - a.value);
 
@@ -192,6 +204,6 @@ export function planAiShot(
     gx: chosen.gx,
     dx: dir.x,
     dy: dir.y,
-    power: clamp(chosen.power * (1 + gaussian(rand) * profile.powerNoise), 0.08, 1),
+    power: shape(clamp(chosen.power * (1 + gaussian(rand) * profile.powerNoise), 0.08, 1), profile),
   };
 }

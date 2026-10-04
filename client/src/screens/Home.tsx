@@ -1,4 +1,6 @@
+import { BOSSES } from '@biro/shared';
 import type { Navigate } from '../App';
+import { DailyCard } from '../components/DailyCard';
 import { Button, PaperScreen, PenPreview } from '../components/ui';
 import { displayName, usePrefs } from '../lib/prefs';
 
@@ -6,6 +8,7 @@ export function Home({ navigate }: { navigate: Navigate }) {
   const prefs = usePrefs();
   const { stats } = prefs;
   const played = stats.aiWins + stats.aiLosses + stats.onlineWins + stats.onlineLosses;
+  const cleared = stats.careerCleared.length;
 
   return (
     <PaperScreen className="home">
@@ -20,9 +23,17 @@ export function Home({ navigate }: { navigate: Navigate }) {
         <p className="hand tagline">flick it. knock it off. don't fall off.</p>
       </div>
 
+      <DailyCard />
+
       <div className="menu-stack">
         <Button variant="blue" size="lg" onClick={() => navigate({ name: 'ai-setup' })}>
           <span className="btn-icon">🤖</span> Play vs Computer
+        </Button>
+        <Button variant="yellow" size="lg" onClick={() => navigate({ name: 'career' })}>
+          <span className="btn-icon">🏆</span> Career
+          <span className="career-pill">
+            {cleared}/{BOSSES.length}
+          </span>
         </Button>
         <Button variant="red" size="lg" onClick={() => navigate({ name: 'online' })}>
           <span className="btn-icon">🌍</span> Play a Friend Online
