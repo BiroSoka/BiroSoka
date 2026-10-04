@@ -50,7 +50,8 @@ npm run build
 ```
 
 `npm test` runs the rules, physics, AI and replay checks and then starts a real server to test pairing, chat and
-bad connections. It takes a few minutes. Continuous integration runs the same commands on every pull request.
+bad connections. It takes a few minutes. Continuous integration runs the same commands on every pull request, plus a browser smoke test that starts the built app
+and checks it really loads.
 
 ## The rules of the road
 
@@ -112,6 +113,8 @@ and will be sent back to be split up.
 - **Logic and physics:** scripts in `shared/scripts/` (`rules-check`, `royale-check`, `progress-check`, `replay-check`).
 - **The real server:** `server/tests/*.test.mts`, run against a live server by `server/tests/run.mts`.
 - **Tuning tools** (not tests): `tune.ts`, `ace.ts`, `duel.ts`, `career-duel.ts` in `shared/scripts/`. Run them with `npx tsx`.
+- **Smoke test:** `npm run smoke -w client -- http://localhost:3001/` loads a running copy of the app in a headless Chrome and checks it
+  starts, with no script errors. CI runs it against the production build.
 - **In a real browser (optional):** `client/e2e/` has scripts that drive the game with a headless Chrome. They need Chrome
   and the dev server running, use a small development-only hook (`window.__biro`, which is removed from production
   builds), and are not run in CI. See the comments at the top of each file.

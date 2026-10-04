@@ -6,7 +6,7 @@ One service hosts the game and the multiplayer server, so there is no CORS or ex
 
 1. Push this repo to GitHub.
 2. On https://render.com choose **New > Blueprint**, pick the repo. It reads `render.yaml`.
-   (Or **New > Web Service** with build `npm install --include=dev && npm run build`, start `npm start`,
+   (Or **New > Web Service** with build `npm ci --include=dev && npm run build`, start `npm start`,
    health check `/api/health`, env `NODE_VERSION=22`.)
 3. Open the `https://biro-soka.onrender.com` URL Render gives you. Send that link to friends.
 
@@ -53,3 +53,24 @@ Good to know
 - Staying awake does not stop restarts (a deploy, or Render's own maintenance). Games in progress are lost when that happens,
   because rooms are kept in memory.
 - Check it works: open `https://YOUR-APP.onrender.com/api/health`. After the first ten minutes it shows `"selfPings"` counting up.
+
+## If the live site shows a blank (dark) page
+
+Open the page, then check these in order:
+
+1. **Is it the latest code?** Render > your service > **Events**. Each deploy names its commit. If the newest one is
+   older than the commit you expect, press **Manual Deploy > Deploy latest commit**. If it still looks wrong, use
+   **Clear build cache & deploy**.
+2. **Why did it not deploy by itself?** Render > **Settings > Build & Deploy > Auto-Deploy**. Choose
+   **After CI checks pass** so only code that passed the tests (including the browser smoke test) goes live.
+3. **See the error.** Open the page, press F12 (or connect your phone), and read the Console. A line starting with
+   "Cannot read properties of undefined" right at start-up usually means mismatched package versions.
+4. **Check it from the command line:** `npm run smoke -w client -- https://YOUR-APP.onrender.com/` loads the live site in a phone-sized browser and
+   reports what is wrong.
+5. **Check the versions that were deployed:** compare `package.json` on the deployed commit with your own
+   (`react` and `react-dom` must be the same version).
+
+**What happened once:** Dependabot opened separate pull requests to upgrade React, Vite and TypeScript to new major
+versions. They were merged together, and Render deployed a build with `react` 19 and `react-dom` 18, which crashes at
+start-up. Dependabot is now set to leave major upgrades alone, to keep React and React DOM in one pull request, and CI
+loads the built app in a browser before anything can merge.

@@ -37,3 +37,11 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # A build can pass every check above and still show a blank page (for example after a bad dependency
+      # upgrade). This starts the built app and loads it in a real browser.
+      - name: Smoke test (does the built app really start?)
+        run: |
+          PORT=3100 npm start > server.log 2>&1 &
+          for i in $(seq 1 40); do curl -sf http://localhost:3100/api/health > /dev/null && break; sleep 1; done
+          npm run smoke -w client -- http://localhost:3100/

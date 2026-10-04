@@ -9,7 +9,8 @@
     "preview": "vite preview --host",
     "e2e:progress": "tsx e2e/progress.mts",
     "e2e:royale": "tsx e2e/royale-replay.mts",
-    "screenshots": "tsx e2e/screenshots.mts"
+    "screenshots": "tsx e2e/screenshots.mts",
+    "smoke": "tsx e2e/smoke.mts"
   },
   "dependencies": {
     "@biro/shared": "*",

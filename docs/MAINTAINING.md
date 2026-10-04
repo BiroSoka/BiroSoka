@@ -123,7 +123,9 @@ reason to protect `main` so that only reviewed, passing code goes live.
 2. **Triage** new issues: add labels; ask for steps or a phone model if a bug is vague (`needs-repro`); close duplicates
    politely with a link; mark small, clear tasks `good first issue`.
 3. **Review pull requests** (checklist below).
-4. Check **Dependabot** pull requests: merge patch and minor updates when CI is green; read the notes for major ones.
+4. Check **Dependabot** pull requests. Merge them **one at a time**, and only when CI (including the browser smoke test) is green;
+   never merge a pile at once. Major upgrades (React, Vite, TypeScript...) are switched off on purpose: do those yourself,
+   locally, with `npm run dev`, `npm test` and a look in the browser, in a branch of their own.
 5. Glance at the live site (`/api/health`) and your uptime monitor.
 
 **Reviewing a pull request: a checklist**

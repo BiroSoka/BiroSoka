@@ -6,7 +6,15 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # Major upgrades (React 18 to 19, Vite 5 to 8, TypeScript 5 to 7) change how the whole app builds and runs, and some
+    # need code changes. Do those by hand, one at a time, after trying them locally (see docs/MAINTAINING.md).
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
+      # React and React DOM must always be the same version, so they travel in one pull request.
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
       minor-and-patch:
         update-types: [minor, patch]
 
@@ -15,3 +23,6 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

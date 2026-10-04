@@ -4,7 +4,7 @@ services:
     name: biro-soka
     runtime: node
     plan: free            # free sleeps after ~15 min idle; use "starter" ($7/mo) to keep it awake
-    buildCommand: npm install --include=dev && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
