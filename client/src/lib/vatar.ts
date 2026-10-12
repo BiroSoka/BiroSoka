@@ -1,4 +1,4 @@
-import { setPrefs } from './prefs';
+import { getPrefs, setPrefs } from './prefs';
 import { sfx } from './audio';
 
 /**
@@ -17,6 +17,10 @@ interface VatarSdk {
   init(): Promise<{ player: VatarPlayer; session: string; mode: 'test' | 'live' }>;
   onPause(fn: () => void): void;
   onResume(fn: () => void): void;
+  session(): Promise<{ session: string }>;
+  purchase(productId: string): Promise<{ purchaseId: string; productId: string }>;
+  purchases(): Promise<{ purchaseId: string; productId: string }[]>;
+  onPurchase(fn: (p: { purchaseId: string; productId: string }) => void): void;
 }
 
 declare global {
@@ -55,12 +59,14 @@ export function installVatar() {
     window.dispatchEvent(new Event(HOST_RESUME));
   });
 
+  sdk.onPurchase((p) => void claimPurchase(p.purchaseId));
   sdk
     .init()
     .then((res) => {
       player = res.player;
       // Lagos Life already knows who this is, so use their name instead of asking again.
       if (res.player.name) setPrefs({ name: res.player.name.slice(0, 16) });
+      void restorePurchases();
     })
     .catch(() => {
       /* sandbox hiccup or rate limit: play as a guest */
@@ -111,4 +117,50 @@ export async function loadLeaderboard(): Promise<Board> {
   const sdk = window.Vatar as (VatarSdk & { leaderboard?: () => Promise<Board> }) | undefined;
   if (!sdk?.leaderboard) throw new Error('unavailable');
   return sdk.leaderboard();
+}
+
+// ---- Purchases (cosmetic pens) ----------------------------------------------------------------------------------
+
+function addPurchase(productId: string) {
+  setPrefs((p) => (p.stats.purchases.includes(productId) ? {} : { stats: { ...p.stats, purchases: [...p.stats.purchases, productId] } }));
+}
+
+async function post(path: string, body: Record<string, unknown>) {
+  const { session } = await window.Vatar!.session();
+  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session, ...body }) });
+  return res;
+}
+
+/** Ask OUR server to check the purchase with Lagos Life. The pen is only unlocked once the server says yes. */
+export async function claimPurchase(purchaseId: string): Promise<boolean> {
+  try {
+    const res = await post('/api/vatar/claim', { purchaseId });
+    if (!res.ok) return false;
+    const { productId } = (await res.json()) as { productId: string };
+    addPurchase(productId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Opens Lagos Life's pay sheet. Resolves true when the pen is unlocked. */
+export async function buyProduct(productId: string): Promise<boolean> {
+  const sdk = window.Vatar;
+  if (!sdk) return false;
+  const bought = await sdk.purchase(productId);
+  return claimPurchase(bought.purchaseId);
+}
+
+/** After a reload or a trip to the payment page: finish anything paid but not yet delivered, and re-learn what we own. */
+async function restorePurchases() {
+  const sdk = window.Vatar;
+  if (!sdk) return;
+  try {
+    for (const p of await sdk.purchases()) await claimPurchase(p.purchaseId);
+    const res = await post('/api/vatar/owned', {});
+    if (res.ok) for (const id of ((await res.json()) as { products: string[] }).products) if (!getPrefs().stats.purchases.includes(id)) addPurchase(id);
+  } catch {
+    /* offline: try again next visit */
+  }
 }

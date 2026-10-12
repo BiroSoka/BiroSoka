@@ -11,7 +11,9 @@ export type SkinUnlock =
   /** Won by beating a Career opponent. */
   | { type: 'career'; boss: string }
   /** Won by playing on this many days in a row. */
-  | { type: 'streak'; days: number };
+  | { type: 'streak'; days: number }
+  /** Bought in Lagos Life (cosmetic only). The product id is set up in the Lagos Life dashboard. */
+  | { type: 'purchase'; product: string; price: number };
 
 export interface PenSkin {
   id: string;
@@ -45,6 +47,8 @@ export const SKINS: PenSkin[] = [
   // Streak pens.
   { id: 'lime', name: 'Lime Streak', barrel: 'solid', barrelColor: '#9be22a', capColor: '#243d00', inkColor: '#9be22a', accent: '#e6ffa8', unlock: { type: 'streak', days: 3 } },
   { id: 'galaxy', name: 'Galaxy', barrel: 'metal', barrelColor: '#5b4bd6', capColor: '#120e33', inkColor: '#111216', accent: '#c9c2ff', unlock: { type: 'streak', days: 7 } },
+  // Sold in Lagos Life only. Looks different, flicks exactly the same.
+  { id: 'ankara', name: 'Ankara Pen', barrel: 'solid', barrelColor: '#e8453c', capColor: '#1a1a6e', inkColor: '#ffb400', accent: '#ffe08a', unlock: { type: 'purchase', product: 'ankara_pen', price: 100 } },
 ];
 
 export const DEFAULT_SKIN = 'blue';

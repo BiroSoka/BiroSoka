@@ -22,6 +22,7 @@ import {
   type ServerToClientEvents,
 } from '@biro/shared';
 import { MatchQueue } from './matchmaking';
+import { mountVatar } from './vatar';
 import { RECONNECT_GRACE_MS, RoomStore, snapshot, type Room } from './rooms';
 
 const PORT = Number(process.env.PORT ?? 3001);
@@ -79,6 +80,8 @@ app.get('/api/health', (_req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({ ok: true, rooms: rooms.size, uptimeSeconds: Math.round(process.uptime()), ...(KEEP_AWAKE ? { selfPings } : {}) });
 });
+
+mountVatar(app);
 
 // In production the server also hosts the built React app.
 const here = dirname(fileURLToPath(import.meta.url));
