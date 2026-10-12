@@ -26,6 +26,8 @@ export interface Stats {
   careerCleared: string[];
   /** Longest run of days with a finished game. */
   bestStreak: number;
+  /** Lagos Life products this player has bought. */
+  purchases: string[];
 }
 
 export interface Prefs {
@@ -58,7 +60,7 @@ const DEFAULTS: Prefs = {
   guide: 'short',
   target: DEFAULT_TARGET,
   difficulty: 'medium',
-  stats: { aiWins: 0, aiLosses: 0, beatHard: false, onlineWins: 0, onlineLosses: 0, careerCleared: [], bestStreak: 0 },
+  stats: { aiWins: 0, aiLosses: 0, beatHard: false, onlineWins: 0, onlineLosses: 0, careerCleared: [], bestStreak: 0, purchases: [] },
   daily: EMPTY_DAILY,
   seenTutorial: false,
   seenRoyale: false,
@@ -117,6 +119,8 @@ export function isUnlocked(skin: PenSkin, stats: Stats): boolean {
       return stats.careerCleared.includes(u.boss);
     case 'streak':
       return stats.bestStreak >= u.days;
+    case 'purchase':
+      return stats.purchases.includes(u.product);
   }
 }
 
@@ -133,6 +137,8 @@ export function unlockText(skin: PenSkin): string {
       return `Beat ${getBoss(u.boss)?.name ?? 'a Career opponent'}`;
     case 'streak':
       return `Play ${u.days} days in a row`;
+    case 'purchase':
+      return `₦${u.price} in Lagos Life`;
   }
 }
 

@@ -15,3 +15,4 @@ coverage/
 .vscode/*
 !.vscode/extensions.json
 .idea/
+data/
