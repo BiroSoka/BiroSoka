@@ -6,6 +6,7 @@ import { PlayerAvatar } from '../components/PlayerAvatar';
 import { ShareButton } from '../components/ShareButton';
 import { TurnTimer } from '../components/TurnTimer';
 import { Button, Confetti, Modal, Toggle } from '../components/ui';
+import { reportWins } from '../lib/vatar';
 import { getPrefs, isUnlocked, recordDaily, setPrefs, unlockedSkins, usePrefs } from '../lib/prefs';
 import { RoyaleController, type RoyaleEvent, type RoyaleHud, type RoyalePhase } from '../game/royaleController';
 import { sfx } from '../lib/audio';
@@ -205,6 +206,7 @@ export function RoyaleScreen({ navigate }: { navigate: Navigate }) {
       else s.onlineLosses++;
       return { stats: s };
     });
+    reportWins(getPrefs().stats.aiWins + getPrefs().stats.onlineWins);
     const daily = noteDaily({ type: 'game', won: iWon, ai: false });
     setStreakInfo({ streak: daily.streak, changed: daily.streakChanged });
     const after = SKINS.filter((s) => isUnlocked(s, getPrefs().stats)).map((s) => s.id);

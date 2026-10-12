@@ -550,3 +550,10 @@ input { font: inherit; -webkit-user-select: text; user-select: text; }
   background: rgba(255, 210, 63, 0.95); color: var(--ink); font-weight: 800; font-size: 0.85rem; letter-spacing: 0.04em; pointer-events: none;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); animation: tick 1.4s ease-in-out infinite;
 }
+
+/* Leaderboard (Lagos Life) */
+.board { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+.board li { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 12px; background: rgba(0, 0, 0, 0.06); }
+.board-rank { width: 28px; font-weight: 800; opacity: 0.6; }
+.board-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-pic { display: block; max-width: 100%; margin: 8px auto; border-radius: 12px; -webkit-touch-callout: default; user-select: auto; }

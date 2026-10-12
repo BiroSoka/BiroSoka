@@ -29,6 +29,7 @@ import { useAudioState } from '../lib/useAudio';
 import { onlineSecondsLeft, useTurnClock } from '../lib/turnClock';
 import { TurnTimer } from '../components/TurnTimer';
 import { online, useOnline } from '../lib/online';
+import { HOST_PAUSE, reportWins } from '../lib/vatar';
 import { displayName, getPrefs, isUnlocked, recordDaily, setPrefs, unlockedSkins, usePrefs } from '../lib/prefs';
 import { AI_OPPONENTS } from './AiSetup';
 
@@ -155,6 +156,13 @@ export function GameScreen({ mode, difficulty, target, career, navigate }: Props
     ctrlRef.current?.setPaused(paused || confirmQuit);
   }, [paused, confirmQuit]);
 
+  // Lagos Life hid the game (tab switch, call): open the pause menu so the Computer's clock stops too.
+  useEffect(() => {
+    const onHostPause = () => setPaused(true);
+    window.addEventListener(HOST_PAUSE, onHostPause);
+    return () => window.removeEventListener(HOST_PAUSE, onHostPause);
+  }, []);
+
   const secondsLeft = useTurnClock(() => (mode === 'ai' ? (ctrlRef.current?.timeLeft() ?? null) : onlineSecondsLeft()));
 
   // Music plays only while a match is on screen, and follows both the music and sound switches.
@@ -254,6 +262,7 @@ export function GameScreen({ mode, difficulty, target, career, navigate }: Props
       else s.onlineLosses++;
       return { stats: s };
     });
+    reportWins(getPrefs().stats.aiWins + getPrefs().stats.onlineWins);
     const daily = noteDaily({ type: 'game', won: iWon, ai: mode === 'ai' });
     setStreakInfo({ streak: daily.streak, changed: daily.streakChanged });
     const after = SKINS.filter((s) => isUnlocked(s, getPrefs().stats)).map((s) => s.id);

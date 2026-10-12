@@ -15,6 +15,7 @@ import { PensScreen } from './screens/PensScreen';
 import { HowTo } from './screens/HowTo';
 import { HowToOnline } from './screens/HowToOnline';
 import { Settings } from './screens/Settings';
+import { Leaderboard } from './screens/Leaderboard';
 
 export type Route =
   | { name: 'home' }
@@ -27,6 +28,7 @@ export type Route =
   | { name: 'game-royale' }
   | { name: 'quickmatch' }
   | { name: 'pens' }
+  | { name: 'leaderboard' }
   | { name: 'howto' }
   | { name: 'howto-online' }
   | { name: 'settings' };
@@ -93,6 +95,8 @@ export default function App() {
       return <QuickMatch navigate={setRoute} />;
     case 'career':
       return <Career navigate={setRoute} />;
+    case 'leaderboard':
+      return <Leaderboard navigate={setRoute} />;
     case 'pens':
       return <PensScreen navigate={setRoute} />;
     case 'howto-online':
