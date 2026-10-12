@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { TableThemeId } from '@biro/shared';
 import { sfx } from '../lib/audio';
 import { renderShareCard, shareResult, type ShareOutcome } from '../lib/shareCard';
+import { insideLagosLife } from '../lib/vatar';
 import { Button } from './ui';
 
 const MESSAGES: Record<ShareOutcome, string> = {
@@ -29,6 +30,7 @@ export function ShareButton({ text, ...info }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [picUrl, setPicUrl] = useState('');
   const building = useRef<Promise<File | null> | null>(null);
 
   function build(): Promise<File | null> {
@@ -62,6 +64,15 @@ export function ShareButton({ text, ...info }: Props) {
     setBusy(true);
     setMessage('');
     const ready = file ?? (await build());
+    if (insideLagosLife()) {
+      // The Lagos Life frame blocks the share sheet, clipboard and downloads: show the picture to press and hold instead.
+      setBusy(false);
+      if (ready) {
+        setPicUrl((old) => old || URL.createObjectURL(ready));
+        setMessage('Press and hold the picture to save it, then post it anywhere!');
+      } else setMessage(MESSAGES.failed);
+      return;
+    }
     const outcome = await shareResult(ready, text);
     setBusy(false);
     setMessage(MESSAGES[outcome]);
@@ -72,6 +83,7 @@ export function ShareButton({ text, ...info }: Props) {
       <Button variant="yellow" onClick={onClick} disabled={busy}>
         📤 Share my win
       </Button>
+      {picUrl && <img className="share-pic" src={picUrl} alt="My Biro Soka win" />}
       {message && <p className="muted small share-msg">{message}</p>}
     </>
   );

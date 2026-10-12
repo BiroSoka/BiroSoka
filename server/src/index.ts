@@ -63,6 +63,18 @@ const SELF_PING_URL = process.env.SELF_PING_URL ?? process.env.RENDER_EXTERNAL_U
 const SELF_PING_MS = Number(process.env.SELF_PING_SECONDS ?? 600) * 1000;
 let selfPings = 0;
 
+/**
+ * Lagos Life shows the game inside a frame on its own sites, and only allows sites that say so with this header.
+ * Everyone else is still blocked from framing the game (clickjacking).
+ */
+const FRAME_ANCESTORS =
+  process.env.FRAME_ANCESTORS ??
+  "'self' https://lagoslife.app https://www.lagoslife.app https://naijalife.app https://www.naijalife.app https://lagoslife.eliysites.com";
+app.use((_req, res, next) => {
+  res.set('Content-Security-Policy', `frame-ancestors ${FRAME_ANCESTORS}`);
+  next();
+});
+
 app.get('/api/health', (_req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({ ok: true, rooms: rooms.size, uptimeSeconds: Math.round(process.uptime()), ...(KEEP_AWAKE ? { selfPings } : {}) });

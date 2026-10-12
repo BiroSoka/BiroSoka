@@ -3,6 +3,7 @@ import type { Navigate } from '../App';
 import { DailyCard } from '../components/DailyCard';
 import { Button, PaperScreen, PenPreview } from '../components/ui';
 import { displayName, usePrefs } from '../lib/prefs';
+import { insideLagosLife } from '../lib/vatar';
 
 export function Home({ navigate }: { navigate: Navigate }) {
   const prefs = usePrefs();
@@ -39,6 +40,11 @@ export function Home({ navigate }: { navigate: Navigate }) {
           <span className="btn-icon">🌍</span> Play a Friend Online
           {!prefs.seenRoyale && <span className="new-badge corner">⚔️ NEW: Battle Royale</span>}
         </Button>
+        {insideLagosLife() && (
+          <Button variant="yellow" onClick={() => navigate({ name: 'leaderboard' })}>
+            <span className="btn-icon">📊</span> Leaderboard
+          </Button>
+        )}
         <div className="menu-row">
           <Button variant="yellow" onClick={() => navigate({ name: 'pens' })}>
             🖊️ Pens
